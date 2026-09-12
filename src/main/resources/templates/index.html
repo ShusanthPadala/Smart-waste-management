@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: header('Smart Waste Dashboard')}"></head>
+<body class="bg-light text-dark">
+    
+    <div th:replace="~{fragments/layout :: navbar}"></div>
+
+    <div class="container-fluid px-4">
+        <!-- KPI Summary Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card kpi-card shadow-sm border-0 h-100">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted text-uppercase mb-2">Total Bins</h6>
+                        <h2 id="kpi-total-bins" class="mb-0 fw-bold">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card shadow-sm border-0 h-100">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted text-uppercase mb-2">Urgent Bins</h6>
+                        <h2 id="kpi-urgent-bins" class="mb-0 fw-bold text-danger">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card shadow-sm border-0 h-100">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted text-uppercase mb-2">Est. Route Distance</h6>
+                        <h2 id="kpi-route-distance" class="mb-0 fw-bold text-primary">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card shadow-sm border-0 h-100 bg-success-light">
+                    <div class="card-body text-center">
+                        <h6 class="text-success text-uppercase mb-2">Potential CO2 Saved</h6>
+                        <h2 id="kpi-co2-saved" class="mb-0 fw-bold text-success">-</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                        <h5 class="card-title fw-bold">Bin Status Distribution</h5>
+                    </div>
+                    <div class="card-body d-flex justify-content-center align-items-center">
+                        <canvas id="statusChart" style="max-height: 250px;"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                        <h5 class="card-title fw-bold">Current vs Predicted Fill (%)</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="fillChart" style="max-height: 250px;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row g-4 mb-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                        <h5 class="card-title fw-bold">Sustainability Comparison</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="sustainabilityChart" style="max-height: 250px;"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+                        <h5 class="card-title fw-bold mb-0">Historical Fill Trend</h5>
+                        <select id="trendBinSelector" class="form-select form-select-sm w-auto">
+                            <option value="">Select a bin...</option>
+                        </select>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="trendChart" style="max-height: 250px;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4 mb-4">
+            <!-- Live Bins Table -->
+            <div class="col-lg-8">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white border-bottom-0 pt-3 d-flex justify-content-between align-items-center">
+                        <h5 class="card-title fw-bold mb-0">Live Bin Status</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-danger me-2" id="resetDemoBtn">
+                                <i class="fa-solid fa-rotate-left me-1"></i> Reset Demo Data
+                            </button>
+                            <button class="btn btn-sm btn-primary me-2" id="addBinBtn">
+                                <i class="fa-solid fa-plus me-1"></i> Add Bin
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" id="refreshDataBtn">
+                                <i class="fa-solid fa-sync me-1"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="binsTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Bin</th>
+                                        <th>Location</th>
+                                        <th>Current Fill</th>
+                                        <th>Predicted Fill</th>
+                                        <th>Hours to Full</th>
+                                        <th>Status</th>
+                                        <th>Last Updated</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Route Optimization Panel -->
+            <div class="col-lg-4">
+                <div class="card shadow-sm border-0 h-100 bg-white">
+                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+                        <h5 class="card-title fw-bold mb-0">Optimized Route</h5>
+                        <button class="btn btn-primary btn-sm shadow-sm" id="generateRouteBtn">
+                            <i class="fa-solid fa-route me-1"></i> Generate
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="routeContent" class="d-none">
+                            <div class="route-metrics p-3 bg-light rounded mb-3">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted small fw-bold">Total Distance</span>
+                                    <span class="fw-bold" id="routeTotalDistance">-</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted small fw-bold">Est. Fuel</span>
+                                    <span class="fw-bold" id="routeTotalFuel">-</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-muted small fw-bold">Est. CO2</span>
+                                    <span class="fw-bold text-success" id="routeTotalCo2">-</span>
+                                </div>
+                            </div>
+                            
+                            <h6 class="fw-bold mb-3">Collection Sequence:</h6>
+                            <ul class="list-group list-group-flush route-sequence" id="routeSequenceList">
+                                <!-- Populated via JS -->
+                            </ul>
+                        </div>
+                        <div id="routeEmptyState" class="text-center text-muted p-5">
+                            <i class="fa-solid fa-map-location-dot fa-3x mb-3 text-light-gray"></i>
+                            <p class="mb-0">Click Generate to calculate the optimal route for urgent bins.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bin Modal -->
+    <div class="modal fade" id="binModal" tabindex="-1" aria-labelledby="binModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="binModalLabel">Add Bin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="binForm">
+                        <input type="hidden" id="binId">
+                        <div class="mb-3">
+                            <label for="binCode" class="form-label">Bin Code</label>
+                            <input type="text" class="form-control" id="binCode" required>
+                            <div class="invalid-feedback">Bin Code must be provided and unique.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="locationName" class="form-label">Location Name</label>
+                            <input type="text" class="form-control" id="locationName" required>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="latitude" class="form-label">Latitude</label>
+                                <input type="number" step="any" class="form-control" id="latitude" required min="-90" max="90">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="longitude" class="form-label">Longitude</label>
+                                <input type="number" step="any" class="form-control" id="longitude" required min="-180" max="180">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="capacity" class="form-label">Capacity (Liters)</label>
+                                <input type="number" step="any" class="form-control" id="capacity" required min="1">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="currentFillPercentage" class="form-label">Current Fill (%)</label>
+                                <input type="number" step="any" class="form-control" id="currentFillPercentage" required min="0" max="100">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveBinBtn">Save Bin</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div th:replace="~{fragments/layout :: footer_scripts}"></div>
+</body>
+</html>

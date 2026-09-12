@@ -1,0 +1,75 @@
+:root {
+    --primary-color: #2e7d32; /* Earth-tone Green */
+    --primary-light: #e8f5e9;
+    --text-main: #333333;
+    --text-muted: #6c757d;
+    --bg-main: #f8f9fa;
+    --bg-card: #ffffff;
+    --border-color: #dee2e6;
+    
+    --status-normal: #198754;
+    --status-soon: #ffc107;
+    --status-urgent: #dc3545;
+    --status-overflow: #8b0000;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.custom-navbar {
+    background-color: var(--primary-color);
+}
+
+.kpi-card {
+    border-radius: 8px;
+    border: 1px solid var(--border-color) !important;
+}
+
+.bg-success-light {
+    background-color: var(--primary-light) !important;
+}
+
+.card {
+    border-radius: 8px;
+    border: 1px solid var(--border-color) !important;
+}
+
+.card-header {
+    background-color: var(--bg-card);
+}
+
+/* Badges */
+.badge-normal {
+    background-color: var(--status-normal);
+    color: white;
+}
+
+.badge-soon {
+    background-color: var(--status-soon);
+    color: #000;
+}
+
+.badge-urgent {
+    background-color: var(--status-urgent);
+    color: white;
+}
+
+.badge-overflow {
+    background-color: var(--status-overflow);
+    color: white;
+}
+
+/* Route Sequence */
+.route-sequence .list-group-item {
+    border-left: 3px solid var(--primary-color);
+    margin-bottom: 8px;
+    border-radius: 4px !important;
+    background-color: #fcfcfc;
+}
+
+.text-light-gray {
+    color: #ced4da;
+}
