@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.List;
 
 @Service
@@ -71,17 +73,24 @@ public class SustainabilityService {
     private SustainabilityComparisonResult.Metrics calculateBaselineMetrics(List<Bin> allBins) {
         SustainabilityComparisonResult.Metrics metrics = new SustainabilityComparisonResult.Metrics();
         if (allBins.isEmpty()) return metrics;
-        
+
+        // Use distinct bins to avoid duplicates
+        Set<Long> distinctBinIds = allBins.stream()
+                .map(Bin::getId)
+                .collect(Collectors.toSet());
+        int distinctCount = distinctBinIds.size();
+
         List<Bin> unvisited = new ArrayList<>(allBins);
         double currentLat = depotLat;
         double currentLon = depotLon;
         double totalDistance = 0.0;
-        
+
         while (!unvisited.isEmpty()) {
             Bin nearest = null;
             double minDistance = Double.MAX_VALUE;
             for (Bin bin : unvisited) {
-                double dist = routeOptimizationService.calculateHaversineDistance(currentLat, currentLon, bin.getLatitude(), bin.getLongitude());
+                double dist = routeOptimizationService.calculateHaversineDistance(
+                        currentLat, currentLon, bin.getLatitude(), bin.getLongitude());
                 if (dist < minDistance) {
                     minDistance = dist;
                     nearest = bin;
@@ -92,14 +101,16 @@ public class SustainabilityService {
             currentLat = nearest.getLatitude();
             currentLon = nearest.getLongitude();
         }
-        totalDistance += routeOptimizationService.calculateHaversineDistance(currentLat, currentLon, depotLat, depotLon);
-        
+        totalDistance += routeOptimizationService.calculateHaversineDistance(
+                currentLat, currentLon, depotLat, depotLon);
+
         metrics.setTotalDistanceKm(totalDistance);
         metrics.setEstimatedFuelLitres(totalDistance / config.getFuelEfficiency());
         metrics.setEstimatedCo2Kg(metrics.getEstimatedFuelLitres() * config.getCo2Factor());
-        metrics.setBinsCollected(allBins.size());
-        metrics.setTotalTrips(1);
-        
+        metrics.setBinsCollected(distinctCount);
+        // Assume each bin requires its own trip in baseline
+        metrics.setTotalTrips(distinctCount);
+
         return metrics;
     }
 }
