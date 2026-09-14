@@ -8,6 +8,7 @@ import com.example.smartwaste.repository.BinRepository;
 import com.example.smartwaste.repository.CollectionRouteRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.example.smartwaste.algorithm.RouteOptimizationService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -41,17 +42,18 @@ public class SustainabilityService {
         SustainabilityComparisonResult.Metrics baseline = calculateBaselineMetrics(allBins);
         result.setBaseline(baseline);
         
-        // Calculate Optimized (latest generated route)
-        CollectionRoute latestRoute = routeRepository.findTopByOrderByGeneratedAtDesc();
+        // Calculate Optimized (always regenerate fresh route)
+        CollectionRoute latestRoute = routeOptimizationService.optimizeRoute();
         SustainabilityComparisonResult.Metrics optimized = new SustainabilityComparisonResult.Metrics();
         
-        if (latestRoute != null) {
+        if (latestRoute != null && latestRoute.getStops() != null && !latestRoute.getStops().isEmpty()) {
             optimized.setTotalDistanceKm(latestRoute.getTotalDistanceKm());
             optimized.setEstimatedFuelLitres(latestRoute.getEstimatedFuelLitres());
             optimized.setEstimatedCo2Kg(latestRoute.getEstimatedCo2Kg());
             optimized.setBinsCollected(latestRoute.getStops().size());
-            optimized.setTotalTrips(1);
+            optimized.setTotalTrips(1); // one trip if there are stops
         } else {
+            // No urgent bins => no optimized route
             optimized.setTotalDistanceKm(0);
             optimized.setEstimatedFuelLitres(0);
             optimized.setEstimatedCo2Kg(0);
@@ -109,7 +111,7 @@ public class SustainabilityService {
         metrics.setEstimatedCo2Kg(metrics.getEstimatedFuelLitres() * config.getCo2Factor());
         metrics.setBinsCollected(distinctCount);
         // Assume each bin requires its own trip in baseline
-        metrics.setTotalTrips(distinctCount);
+        metrics.setTotalTrips(1);
 
         return metrics;
     }

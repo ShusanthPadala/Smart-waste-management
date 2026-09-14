@@ -121,7 +121,10 @@ public class PredictionService {
                 result.setPredictedOverflowTime(LocalDateTime.now().plusMinutes((long)(hoursToFull * 60)));
                 
                 double predictedNext24h = intercept + slope * (currentHours + 24);
-                result.setPredictedFillPercentage(Math.min(predictedNext24h, 100.0));
+                double predictedFill = Math.min(predictedNext24h, 100.0);
+            // Clamp to current fill to avoid decreasing prediction without collection
+            predictedFill = Math.max(predictedFill, bin.getCurrentFillPercentage());
+            result.setPredictedFillPercentage(predictedFill);
                 
                 // Calculate R-squared for confidence score
                 double meanY = sumY / n;
