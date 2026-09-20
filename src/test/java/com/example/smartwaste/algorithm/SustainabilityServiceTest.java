@@ -8,11 +8,13 @@ import com.example.smartwaste.repository.CollectionRouteRepository;
 import com.example.smartwaste.config.SustainabilityConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
+
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.util.Arrays;
+import java.util.List;
+import com.example.smartwaste.entity.RouteStop;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -24,26 +26,36 @@ public class SustainabilityServiceTest {
 
     @Mock
     private CollectionRouteRepository routeRepository;
-    
-    @Mock
-    private RouteOptimizationService routeOptimizationService;
-    
-    @Mock
+
     private SustainabilityConfig config;
 
-    @InjectMocks
+    // Real service with mocks injected
+    private RouteOptimizationService routeOptimizationService;
+
     private SustainabilityService sustainabilityService;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
+        // Create real config instance with values
+        config = new SustainabilityConfig();
+        java.lang.reflect.Field fuelField = config.getClass().getDeclaredField("fuelEfficiency");
+        fuelField.setAccessible(true);
+        fuelField.set(config, 5.0);
+        java.lang.reflect.Field co2Field = config.getClass().getDeclaredField("co2Factor");
+        co2Field.setAccessible(true);
+        co2Field.set(config, 2.68);
+        // Initialize real RouteOptimizationService and spy it
+        routeOptimizationService = new RouteOptimizationService(binRepository, routeRepository, config);
+        routeOptimizationService = spy(routeOptimizationService);
+        // stubs moved to setUp
+        // Instantiate the service under test using constructor injection
+        sustainabilityService = new SustainabilityService(binRepository, routeRepository, routeOptimizationService, config);
     }
 
     @Test
     void testFuelAndCo2Math() {
-        when(config.getFuelEfficiency()).thenReturn(5.0);
-        when(config.getCo2Factor()).thenReturn(2.68);
-        when(routeOptimizationService.calculateHaversineDistance(anyDouble(), anyDouble(), anyDouble(), anyDouble())).thenReturn(5.0);
+
         
         Bin bin1 = new Bin(); bin1.setLatitude(40.0); bin1.setLongitude(-74.0);
         Bin bin2 = new Bin(); bin2.setLatitude(40.1); bin2.setLongitude(-74.1);
@@ -54,9 +66,14 @@ public class SustainabilityServiceTest {
         route.setTotalDistanceKm(10.0);
         route.setEstimatedFuelLitres(2.0);
         route.setEstimatedCo2Kg(5.36);
-        
+        // add a stop to reflect one collected bin
+        RouteStop stop = new RouteStop();
+        stop.setBinCode("B004");
+        route.setStops(List.of(stop));
         when(routeRepository.findTopByOrderByGeneratedAtDesc()).thenReturn(route);
-        
+        // stub optimized route generation
+        doReturn(route).when(routeOptimizationService).optimizeRoute();
+
         SustainabilityComparisonResult result = sustainabilityService.compareStrategies();
         
         // The TSP calculation for the baseline involves bin1 and bin2. 

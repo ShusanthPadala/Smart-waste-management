@@ -19,8 +19,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import com.example.smartwaste.config.SustainabilityConfig;
+
 import org.springframework.test.util.ReflectionTestUtils;
+import com.example.smartwaste.config.SustainabilityConfig;
 
 public class RouteOptimizationServiceTest {
 
@@ -30,18 +31,29 @@ public class RouteOptimizationServiceTest {
     @Mock
     private CollectionRouteRepository routeRepository;
 
-    @Mock
-    private SustainabilityConfig config;
-
     @InjectMocks
     private RouteOptimizationService routeOptimizationService;
 
+    private SustainabilityConfig config;
+
+
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
+        // Create real config instance
+        config = new SustainabilityConfig();
+        // Set fields via reflection (since @Value injection not used in test)
+        java.lang.reflect.Field fuelField = config.getClass().getDeclaredField("fuelEfficiency");
+        fuelField.setAccessible(true);
+        fuelField.set(config, 5.0);
+        java.lang.reflect.Field co2Field = config.getClass().getDeclaredField("co2Factor");
+        co2Field.setAccessible(true);
+        co2Field.set(config, 2.68);
+        // Inject config into service
+        java.lang.reflect.Field configField = routeOptimizationService.getClass().getDeclaredField("sustainabilityConfig");
+        configField.setAccessible(true);
+        configField.set(routeOptimizationService, config);
         when(routeRepository.save(any(CollectionRoute.class))).thenAnswer(i -> i.getArguments()[0]);
-        when(config.getFuelEfficiency()).thenReturn(5.0);
-        when(config.getCo2Factor()).thenReturn(2.68);
     }
 
     @Test

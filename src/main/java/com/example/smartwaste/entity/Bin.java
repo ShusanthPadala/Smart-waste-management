@@ -22,4 +22,12 @@ public class Bin {
     
     @Enumerated(EnumType.STRING)
     private BinStatus status;
+
+    @PrePersist
+    @PreUpdate
+    public void updateStatus() {
+        if (this.currentFillPercentage >= 90.0 && this.status != BinStatus.OVERFLOW_RISK) {
+            this.status = BinStatus.URGENT;
+        }
+    }
 }

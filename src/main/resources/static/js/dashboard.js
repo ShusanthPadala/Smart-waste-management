@@ -382,7 +382,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const metrics = await response.json();
             
             // Update KPIs
-            document.getElementById('kpi-co2-saved').innerText = (metrics.baseline.estimatedCo2Kg - metrics.optimized.estimatedCo2Kg).toFixed(2) + ' kg';
+        document.getElementById('kpi-co2-saved').innerText = (metrics.baseline.estimatedCo2Kg - metrics.optimized.estimatedCo2Kg).toFixed(2) + ' kg';
+        document.getElementById('kpi-route-distance').innerText = metrics.optimized.totalDistanceKm.toFixed(2) + ' km';
             
             const data = {
                 labels: ['Fixed Schedule', 'Optimized Route'],
