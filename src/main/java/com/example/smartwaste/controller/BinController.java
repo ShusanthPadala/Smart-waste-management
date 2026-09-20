@@ -5,6 +5,7 @@ import com.example.smartwaste.entity.BinStatus;
 import com.example.smartwaste.entity.SensorReading;
 import com.example.smartwaste.repository.BinRepository;
 import com.example.smartwaste.repository.SensorReadingRepository;
+import com.example.smartwaste.repository.RouteStopRepository;
 import com.example.smartwaste.simulation.SimulationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import java.util.List;
 public class BinController {
     private final BinRepository binRepository;
     private final SensorReadingRepository sensorReadingRepository;
+    private final RouteStopRepository routeStopRepository;
     private final SimulationService simulationService;
 
     @GetMapping
@@ -48,8 +50,11 @@ public class BinController {
     }
     
     @DeleteMapping("/{id}")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<Void> deleteBin(@PathVariable Long id) {
         if(binRepository.existsById(id)) {
+            sensorReadingRepository.deleteByBinId(id);
+            routeStopRepository.setBinToNull(id);
             binRepository.deleteById(id);
             return ResponseEntity.ok().build();
         }
