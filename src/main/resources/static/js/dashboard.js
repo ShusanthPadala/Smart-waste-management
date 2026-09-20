@@ -432,16 +432,19 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const response = await fetch('/api/routes/optimize', { method: 'POST' });
-            if (response.ok) {
-                const text = await response.text();
-                let route = null;
-                if (text) {
-                    route = JSON.parse(text);
-                }
-                
-                if (route && route.stops && route.stops.length > 0) {
-                    document.getElementById('routeEmptyState').classList.add('d-none');
-                    document.getElementById('routeContent').classList.remove('d-none');
+            if (!response.ok) {
+                throw new Error('Server returned ' + response.status);
+            }
+            
+            const text = await response.text();
+            let route = null;
+            if (text) {
+                route = JSON.parse(text);
+            }
+            
+            if (route && route.stops && route.stops.length > 0) {
+                document.getElementById('routeEmptyState').classList.add('d-none');
+                document.getElementById('routeContent').classList.remove('d-none');
                     
                     document.getElementById('routeTotalDistance').innerText = route.totalDistanceKm.toFixed(2) + ' km';
                     document.getElementById('routeTotalFuel').innerText = route.estimatedFuelLitres.toFixed(2) + ' L';
@@ -471,7 +474,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Refresh comparison data as well
                 await loadSustainabilityComparison();
-            }
         } catch (error) {
             console.error('Error optimizing route:', error);
             alert('Failed to generate route.');
