@@ -1,94 +1,87 @@
 package com.example.smartwaste.algorithm;
 
+import com.example.smartwaste.config.SustainabilityConfig;
 import com.example.smartwaste.dto.SustainabilityComparisonResult;
 import com.example.smartwaste.entity.Bin;
-import com.example.smartwaste.entity.CollectionRoute;
+import com.example.smartwaste.entity.BinStatus;
 import com.example.smartwaste.repository.BinRepository;
 import com.example.smartwaste.repository.CollectionRouteRepository;
-import com.example.smartwaste.config.SustainabilityConfig;
+import com.example.smartwaste.repository.RouteStopRepository;
+import com.example.smartwaste.repository.VehicleRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-
-import java.util.Arrays;
+import java.time.Clock;
 import java.util.List;
-import com.example.smartwaste.entity.RouteStop;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-public class SustainabilityServiceTest {
+class SustainabilityServiceTest {
 
-    @Mock
     private BinRepository binRepository;
-
-    @Mock
     private CollectionRouteRepository routeRepository;
-
-    private SustainabilityConfig config;
-
-    // Real service with mocks injected
-    private RouteOptimizationService routeOptimizationService;
-
-    private SustainabilityService sustainabilityService;
+    private SustainabilityService service;
+    private final SustainabilityConfig config = new SustainabilityConfig();
 
     @BeforeEach
-    void setUp() throws Exception {
-        MockitoAnnotations.openMocks(this);
-        // Create real config instance with values
-        config = new SustainabilityConfig();
-        java.lang.reflect.Field fuelField = config.getClass().getDeclaredField("fuelEfficiency");
-        fuelField.setAccessible(true);
-        fuelField.set(config, 5.0);
-        java.lang.reflect.Field co2Field = config.getClass().getDeclaredField("co2Factor");
-        co2Field.setAccessible(true);
-        co2Field.set(config, 2.68);
-        // Initialize real RouteOptimizationService and spy it
-        routeOptimizationService = new RouteOptimizationService(binRepository, routeRepository, config);
-        routeOptimizationService = spy(routeOptimizationService);
-        // stubs moved to setUp
-        // Instantiate the service under test using constructor injection
-        sustainabilityService = new SustainabilityService(binRepository, routeRepository, routeOptimizationService, config);
+    void setUp() {
+        binRepository = mock(BinRepository.class);
+        routeRepository = mock(CollectionRouteRepository.class);
+        RouteOptimizationService optimizer = new RouteOptimizationService(binRepository, routeRepository, config,
+                mock(VehicleRepository.class), mock(RouteStopRepository.class), Clock.systemDefaultZone());
+        service = new SustainabilityService(binRepository, routeRepository, optimizer, config, Clock.systemDefaultZone());
+    }
+
+    private static Bin bin(BinStatus status, double fill, double lat, double lon) {
+        Bin b = new Bin();
+        b.setStatus(status);
+        b.setCurrentFillPercentage(fill);
+        b.setLatitude(lat);
+        b.setLongitude(lon);
+        return b;
     }
 
     @Test
-    void testFuelAndCo2Math() {
+    void optimisedRouteBeatsFixedSchedule() {
+        when(binRepository.findAll()).thenReturn(List.of(
+                bin(BinStatus.URGENT, 95, 17.45, 78.36),
+                bin(BinStatus.NORMAL, 20, 17.47, 78.33),
+                bin(BinStatus.NORMAL, 35, 17.42, 78.39),
+                bin(BinStatus.SOON, 70, 17.41, 78.34)));
 
-        
-        Bin bin1 = new Bin(); bin1.setLatitude(40.0); bin1.setLongitude(-74.0);
-        Bin bin2 = new Bin(); bin2.setLatitude(40.1); bin2.setLongitude(-74.1);
-        
-        when(binRepository.findAll()).thenReturn(Arrays.asList(bin1, bin2));
-        
-        CollectionRoute route = new CollectionRoute();
-        route.setTotalDistanceKm(10.0);
-        route.setEstimatedFuelLitres(2.0);
-        route.setEstimatedCo2Kg(5.36);
-        // add a stop to reflect one collected bin
-        RouteStop stop = new RouteStop();
-        stop.setBinCode("B004");
-        route.setStops(List.of(stop));
-        when(routeRepository.findTopByOrderByGeneratedAtDesc()).thenReturn(route);
-        // stub optimized route generation
-        doReturn(route).when(routeOptimizationService).optimizeRoute();
+        SustainabilityComparisonResult r = service.compareStrategies();
 
-        SustainabilityComparisonResult result = sustainabilityService.compareStrategies();
-        
-        // The TSP calculation for the baseline involves bin1 and bin2. 
-        // We just need to check if the math (distance, fuel, co2) works.
-        assertTrue(result.getBaseline().getTotalDistanceKm() > 0);
-        assertTrue(result.getBaseline().getEstimatedFuelLitres() > 0);
-        assertTrue(result.getBaseline().getEstimatedCo2Kg() > 0);
-        
-        assertEquals(10.0, result.getOptimized().getTotalDistanceKm());
-        assertEquals(2.0, result.getOptimized().getEstimatedFuelLitres());
-        assertEquals(5.36, result.getOptimized().getEstimatedCo2Kg());
-        
-        // Percentage improvement
-        assertTrue(result.getDistanceSavedPct() > 0);
-        assertTrue(result.getFuelSavedPct() > 0);
-        assertTrue(result.getCo2SavedPct() > 0);
+        assertEquals(4, r.getBaseline().getBinsCollected());
+        assertEquals(1, r.getOptimized().getBinsCollected());
+        assertEquals(3, r.getBinsSkipped());
+        assertTrue(r.getBaseline().getTotalDistanceKm() > r.getOptimized().getTotalDistanceKm());
+        assertEquals(r.getBaseline().getTotalDistanceKm() / config.getFuelEfficiency(), r.getBaseline().getEstimatedFuelLitres(), 1e-9);
+        assertEquals(r.getBaseline().getEstimatedFuelLitres() * config.getCo2Factor(), r.getBaseline().getEstimatedCo2Kg(), 1e-9);
+        assertTrue(r.getCo2SavedPct() > 0 && r.getCo2SavedPct() < 100);
+        assertEquals(95, r.getOptimized().getAverageFillAtPickup(), 1e-9);
+        assertEquals(55, r.getBaseline().getAverageFillAtPickup(), 1e-9);
+        assertEquals(r.getAnnualCo2SavedKg() / config.getCo2PerTreeKgPerYear(), r.getTreesEquivalent(), 1e-9);
+        verify(routeRepository, never()).save(any());
+    }
+
+    @Test
+    void nothingToCollectSavesEverything() {
+        when(binRepository.findAll()).thenReturn(List.of(bin(BinStatus.NORMAL, 20, 17.45, 78.36)));
+
+        SustainabilityComparisonResult r = service.compareStrategies();
+
+        assertEquals(0, r.getOptimized().getTotalDistanceKm());
+        assertEquals(100.0, r.getCo2SavedPct(), 1e-9);
+        assertEquals(0, r.getAnnualCo2SavedKg(), "an empty cycle is not annualised");
+    }
+
+    @Test
+    void noBinsMeansNoSavings() {
+        when(binRepository.findAll()).thenReturn(List.of());
+        SustainabilityComparisonResult r = service.compareStrategies();
+        assertEquals(0, r.getCo2SavedPct());
+        assertEquals(0, r.getAnnualCo2SavedKg());
     }
 }

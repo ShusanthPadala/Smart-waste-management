@@ -1,128 +1,130 @@
-# Smart & Sustainable Waste Collection Management System
+# EcoRoute: Smart & Sustainable Waste Collection
 
-## Project Overview
-Traditional residential waste collection relies on fixed, static schedules, leading to unnecessary trips for empty bins, overflowing bins in high-usage areas, and inefficient fuel consumption. The Smart Waste Management System solves this by ingesting real-time bin sensor data, predicting when bins will overflow using linear regression, and dynamically generating optimized collection routes for only the bins that need it, dramatically reducing CO₂ emissions and operational costs.
+Fixed collection schedules send trucks to half-empty bins while busy sites overflow. EcoRoute watches every bin's fill sensor, forecasts when each one will be full, and plans fleet routes through only the bins that need emptying. It then shows the distance, diesel and CO₂ saved compared with a fixed schedule.
 
-## Architecture
-The system operates as a data-driven pipeline:
-1. **Data**: Simulates continuous IoT sensor readings for fill levels across city bins.
-2. **Prediction**: Analyzes historical readings using linear regression to forecast future fill levels and overflow times.
-3. **Priority**: Classifies bins into `NORMAL`, `SOON`, `URGENT`, and `OVERFLOW_RISK` based on thresholds.
-4. **Route Optimization**: Uses a Nearest-Neighbor algorithm to calculate the shortest path connecting all `URGENT` bins.
-5. **Dashboard**: Provides a unified, dynamic web interface for operators to monitor live status, generate routes, and track sustainability KPIs.
+The demo runs a simulated district of **24 bins in west Hyderabad** (Gachibowli, HITEC City, Kondapur and around) with **3 trucks** on an accelerated clock, so a day of operations plays out in minutes.
 
-## AI & Algorithm Explanation
-*   **Trend-Based Linear Regression**: Instead of just looking at current fill levels, the system calculates the "fill rate" (slope) using the last 10 sensor readings. It automatically detects if a bin was recently emptied to avoid skewed data, and solves the linear equation `y = mx + c` to determine exactly how many hours remain until 100% capacity.
-*   **Confidence Scoring (R²)**: The system computes the R-squared statistical measure to determine how well the sensor readings fit a straight line. If the data is highly erratic, confidence drops.
-*   **Nearest-Neighbor Routing**: When a route is generated, the algorithm starts at the depot and iteratively finds the closest unvisited urgent bin until all are collected. 
-*   **Haversine Distance**: All routing distances are calculated using the Haversine formula, which accurately computes the shortest distance over the earth's surface given latitude and longitude coordinates.
-*   **Sustainability Calculations**: The system compares the optimized route (only visiting urgent bins) against a theoretical fixed schedule (visiting all bins) to prove the reduction in driving distance, fuel consumption, and CO₂ emissions.
+## What's inside
 
-## How to Run
-This project requires JDK 17 and Maven. A local JDK 17 and Maven distribution are included in the workspace.
+| Area | Highlights |
+|---|---|
+| **Live operations dashboard** | Overview KPIs, district map, "next to overflow" list, fill by zone, activity feed. Updates push in over Server-Sent Events, so there's no polling. |
+| **Live map** | Bins sized by fill and coloured by status, planned routes (dashed), active routes (solid), trucks driving their tours in real time, and status filters. |
+| **Bins** | Searchable, sortable and filterable table; detail drawer with 72 h history and a 24 h forecast chart; add/edit with a map location picker; mark emptied; CSV import. |
+| **Routes & fleet** | Multi-truck, capacity-aware planning; dispatch / complete / cancel; load vs capacity; 2-opt savings per route; fleet status and route history. |
+| **Sustainability** | Fixed schedule vs data-driven for distance, diesel and CO₂; average fill at pickup; bins collected per day; lifetime totals; methodology. |
+| **Alerts** | Raised automatically when a bin turns urgent or reaches overflow risk, and on route events. Acknowledge one or all. Open alerts resolve automatically when a bin is emptied. |
+| **Simulation controls** | Pause or resume, run at 1× / 60× / 360× / 1800×, **Autopilot** (plans and dispatches on its own), reset demo data. |
+| **Polish** | Light & dark themes, responsive down to phone width, keyboard shortcuts (`/` to search, `Esc` to close). |
 
-1. Navigate to the project directory:
-   ```bash
-   cd "s:\Projects\1M1B project\smart-waste"
-   ```
-2. Set `JAVA_HOME` to the pinned JDK 17 directory and run via Maven:
-   ```powershell
-   $env:JAVA_HOME="S:\Projects\1M1B project\smart-waste\jdk17\jdk-17.0.20.1+1"
-   .\maven\apache-maven-3.9.6\bin\mvn.cmd spring-boot:run
-   ```
-3. Open the dashboard in your browser: `http://localhost:8080`
+## How it works
 
-To run the unit tests:
+1. **Sensors (simulated).** Each bin has a site profile: residential, market, commercial, park or transit. Its fill rate varies by hour of day and weekday. A reading is stored every simulated hour, with 7 days of history on start-up.
+2. **Forecast.** A least-squares trend line over the last 10 readings, restarted after a collection, gives the fill rate and the time until 100%. R² (penalised for fewer than 5 points) is the confidence score.
+3. **Priority.**
+   * **Overflow risk:** full, or past 100% on trend.
+   * **Urgent:** ≥ 90%, or full within 8 h.
+   * **Soon:** full within 24 h.
+4. **Routing** (`RoutingEngine`, pure and unit tested):
+   1. Keep the most critical bins that fit in the free fleet's combined payload.
+   2. Split them between trucks with a **capacity-aware sweep** around the depot.
+   3. Order each tour with **nearest-neighbour**, then improve it with **2-opt**.
+   4. Measure distances with **Haversine**.
+5. **Execution.** A dispatched truck advances along its legs at 25 km/h, with 3 min of service per stop. Each bin is emptied as the truck reaches it, and the route closes when the truck is back at the depot.
+6. **Sustainability.** Fuel = km ÷ truck km/L. CO₂ = fuel × 2.68 kg/L (diesel). Trees equivalent = annual CO₂ ÷ 21 kg per tree per year.
+
+## Run it
+
+JDK 17 and Maven are bundled in this folder.
+
 ```powershell
-$env:JAVA_HOME="S:\Projects\1M1B project\smart-waste\jdk17\jdk-17.0.20.1+1"
-.\maven\apache-maven-3.9.6\bin\mvn.cmd test
+cd "S:\Projects\1M1B project\smart-waste"
+.\run.bat spring-boot:run
 ```
 
-## API Documentation
+Open **http://localhost:8080**. Other useful pages:
 
-### 1. `GET /api/bins`
-Returns a list of all bins and their current status.
-**Response:**
-```json
-[
-  { "id": 1, "binCode": "B001", "locationName": "Green Park Residency", "latitude": 40.71, "longitude": -74.00, "capacity": 100.0, "currentFillPercentage": 68.2, "status": "NORMAL" }
-]
+* API docs (Swagger UI): http://localhost:8080/swagger-ui.html
+* Health check: http://localhost:8080/actuator/health
+* H2 console: http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:smartwaste`, user `sa`, password `password`)
+
+Run the tests (33 tests: unit tests for prediction, routing and sustainability, plus end-to-end API tests):
+
+```powershell
+.\run.bat test
 ```
 
-### 2. `POST /api/bins`
-Creates a new bin.
-**Request:**
-```json
-{ "binCode": "B005", "locationName": "New Office", "latitude": 40.75, "longitude": -73.98, "capacity": 100.0, "currentFillPercentage": 0.0 }
+**Try this:** click **Plan routes**, then **Dispatch all**, open **Live map**, and set the clock to **360×**. Or switch on **Autopilot** and watch the Sustainability page fill up.
+
+## API
+
+All JSON. Errors come back as `{status, error, message, fieldErrors?}`.
+
+| Method & path | Purpose |
+|---|---|
+| `GET /api/dashboard/summary` | Headline numbers: status counts, fleet, open alerts, lifetime totals |
+| `GET /api/bins` | All bins with their latest prediction |
+| `GET /api/bins/{id}` | One bin |
+| `POST /api/bins` | Create a bin (validated, unique code) |
+| `PUT /api/bins/{id}` | Update a bin |
+| `DELETE /api/bins/{id}` | Delete a bin and its readings |
+| `GET /api/bins/urgent` | Bins that need pickup |
+| `GET /api/bins/{id}/history` | Last 50 readings |
+| `GET /api/bins/{id}/forecast` | 72 h history + 24 h projection |
+| `POST /api/bins/{id}/collect` | Mark a bin emptied |
+| `GET /api/predictions` | Re-run predictions for every bin |
+| `POST /api/routes/plan?includeSoon=false` | Plan fleet routes (replaces undispatched plans). `POST /api/routes/optimize` is an alias. |
+| `GET /api/routes/active` | Planned and in-progress routes |
+| `GET /api/routes` | Last 30 routes |
+| `POST /api/routes/{id}/dispatch` | Send the truck out |
+| `POST /api/routes/{id}/complete` | Finish now |
+| `POST /api/routes/{id}/cancel` | Cancel the route |
+| `GET /api/fleet` | Trucks with live position and active route |
+| `GET /api/metrics/comparison` | Fixed schedule vs optimised, for the current state. `GET /api/sustainability/compare` is an alias. |
+| `GET /api/metrics/lifetime` | Totals over completed routes |
+| `GET /api/metrics/daily?days=7` | Daily totals |
+| `GET /api/metrics/zones` | Average fill and demand per zone |
+| `GET /api/alerts?open=true` | Alerts |
+| `POST /api/alerts/{id}/ack` | Acknowledge one alert |
+| `POST /api/alerts/ack-all` | Acknowledge all alerts |
+| `GET /api/simulation` | Clock, speed, paused, autopilot, depot |
+| `POST /api/simulation` | Change state with `{speed, paused, autopilot}` |
+| `POST /api/simulation/reset` | Rebuild the demo district (`POST /api/bins/reset-demo` is an alias) |
+| `POST /api/simulation/import` | Multipart CSV of `timestamp,bin,fillPercentage`; `bin` is a code or an id (see `sample-sensor-data.csv`) |
+| `GET /api/stream` | Server-Sent Events: `tick` after each simulation step, `alert` when one is raised |
+
+## Project layout
+
+```
+src/main/java/com/example/smartwaste/
+  algorithm/   PredictionService, RoutingEngine, RouteOptimizationService, SustainabilityService
+  service/     BinService, RouteService (lifecycle + truck movement), AlertService, DashboardService, LiveUpdateService (SSE)
+  simulation/  SimulationService (demo district, live tick, autopilot, CSV import), WorldLock
+  controller/  REST endpoints + the dashboard page
+  entity/ dto/ repository/ config/ web/ (error handling)
+src/main/resources/
+  templates/index.html          single-page dashboard shell
+  static/css/app.css            design system (light/dark tokens, components)
+  static/js/{app,api,ui,maps}.js  ES modules, no build step (Leaflet + Chart.js from CDN)
 ```
 
-### 3. `PUT /api/bins/{id}`
-Updates an existing bin (including manual fill percentage overrides).
+## Configuration (`application.properties`)
 
-### 4. `DELETE /api/bins/{id}`
-Deletes a bin and its associated sensor history.
+| Property | Default | Meaning |
+|---|---|---|
+| `app.depot.latitude` / `longitude` | 17.4401 / 78.3489 | Where routes start and end |
+| `app.threshold.urgent` | 90 | Fill % that is urgent on its own |
+| `app.threshold.urgent-hours` / `soon-hours` | 8 / 24 | Time to full for urgent / soon |
+| `app.sustainability.*` | 4.5 km/L, 2.68 kg/L, 25 km/h, 3 min/stop | Emissions and timing model |
+| `smartwaste.simulation.speed` | 60 | Simulated seconds per real second |
+| `smartwaste.simulation.tick-ms` | 2000 | How often the world advances |
+| `smartwaste.simulation.autopilot` | false | Start with autopilot on |
 
-### 5. `GET /api/bins/{id}/history`
-Fetches historical sensor readings for a specific bin.
+## Limitations & next steps
 
-### 6. `GET /api/predictions`
-Calculates and returns live predictions for all bins.
-**Response:**
-```json
-[
-  { "binId": 4, "currentFillPercentage": 95.0, "predictedFillPercentage": 100.0, "estimatedHoursToFull": 5.2, "predictedOverflowTime": "2026-09-14T19:17:15", "confidence": 0.99, "recommendedStatus": "URGENT" }
-]
-```
-
-### 7. `GET /api/routes/optimize`
-Generates the optimal collection route for urgent bins.
-**Response:**
-```json
-{
-  "totalDistanceKm": 2.5,
-  "estimatedTravelTimeMinutes": 5.0,
-  "estimatedFuelLitres": 0.55,
-  "estimatedCo2Kg": 1.49,
-  "stops": [ { "sequenceOrder": 1, "binCode": "B004", "locationName": "Community Market" } ]
-}
-```
-
-### 8. `GET /api/sustainability/compare`
-Compares the optimized route to a fixed schedule route.
-
-### 9. `POST /api/demo/reset`
-Wipes the database and restores the default demo scenario.
-
-## Database Schema Overview
-*   **`Bin`**: Represents a physical waste bin. Contains `binCode`, `locationName`, coordinates, capacity, `currentFillPercentage`, and `status`.
-*   **`SensorReading`**: Historical time-series data. Contains a Many-to-One reference to `Bin`, a `timestamp`, and `fillPercentage`.
-*   **`CollectionRoute`**: Represents a generated route. Contains overall metrics (distance, time, fuel, CO2).
-*   **`RouteStop`**: Contains a Many-to-One reference to `CollectionRoute`. Represents an ordered stop along the route. Includes `sequenceOrder`, `binCode`, and `locationName`.
-*   **`Vehicle`**: (Reserved for future multi-vehicle routing).
-
-## Simulation & Demo Data
-Because this is a prototype without physical IoT sensors, a `SimulationService` generates realistic 7-day historical fill data on startup.
-*   **Realistic Fill Rates**: Bins fill at varying speeds. For example, "Community Market" (Bin 4) fills much faster than residential areas.
-*   **Guaranteed Demo Scenario**: To ensure the routing algorithm can be effectively demonstrated, Bin B004 is artificially forced to 95% fill capacity at startup, guaranteeing at least one `URGENT` bin.
-*   **Reset Demo Data**: The dashboard includes a "Reset Demo Data" button. If you manually create, edit, or delete bins during testing and ruin the demo state, this button will purge the database and perfectly restore the original 4 bins and the guaranteed-urgent Bin 4 scenario.
-
-## Sustainability Metrics
-The `SustainabilityService` measures the environmental impact of the algorithm.
-*   **Fuel Efficiency**: Assumed to be `0.22 Liters / Km` (standard heavy-duty diesel garbage truck).
-*   **CO₂ Emission Factor**: Assumed to be `2.68 Kg CO₂ / Liter` of diesel burned.
-*   **Formulas**: 
-    *   `Fuel Consumed (L) = Distance (km) * 0.22`
-    *   `CO₂ Emissions (kg) = Fuel Consumed (L) * 2.68`
-*   The dashboard compares the *Optimized Route* against a *Fixed Schedule* (which would drive to all 4 bins regardless of fill level) to visualize the percentage saved.
-
-## Limitations
-*   **Simulated Data**: The system relies on software-generated data rather than physical IoT ultrasonic sensors.
-*   **Heuristic Routing**: The Nearest-Neighbor algorithm is a greedy heuristic. While fast and effective for smaller datasets, it does not guarantee the globally mathematically optimal shortest path (like the exact TSP solution).
-*   **Estimated Metrics**: Fuel and CO₂ metrics are based on static constants and do not account for variable factors like load weight, road grade, or idling time.
-*   **Single Vehicle**: The current optimization logic assumes a single garbage truck and does not yet support multi-vehicle fleet distribution (CVRP).
-
-## Future Enhancements
-*   **Real IoT Sensor Integration**: Replace the simulation layer with an MQTT broker to ingest payloads from real physical ESP32/Arduino ultrasonic sensors.
-*   **ML-Based Forecasting**: Replace the linear regression model with an LSTM Neural Network to detect complex, non-linear seasonal patterns in waste generation.
-*   **Multi-Vehicle Fleet Routing (CVRP)**: Implement Google OR-Tools to distribute urgent bins across a fleet of multiple garbage trucks with specific carrying capacities.
-*   **Traffic-Aware Routing**: Integrate the Google Maps Distance Matrix API to route trucks based on real-time traffic conditions instead of straight-line Haversine distance.
+* **Simulated sensors.** Replace `SimulationService` with an MQTT ingest from real ultrasonic sensors.
+* **Straight-line distances.** Haversine ignores the road network. OSRM or a distance-matrix API would give road distances and traffic-aware times.
+* **Heuristic routing.** Sweep, nearest-neighbour and 2-opt are fast and good, but not optimal. OR-Tools CVRP with time windows is the natural upgrade.
+* **Linear forecast.** Daily seasonality is visible in the data, so a seasonal model (Holt-Winters, gradient boosting) would forecast better.
+* **In-memory H2.** The demo resets on restart. Point the datasource at Postgres for persistence.
+* **No authentication.** Add Spring Security before exposing it beyond a demo.

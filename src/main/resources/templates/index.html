@@ -1,230 +1,385 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{fragments/layout :: header('Smart Waste Dashboard')}"></head>
-<body class="bg-light text-dark">
-    
-    <div th:replace="~{fragments/layout :: navbar}"></div>
-
-    <div class="container-fluid px-4">
-        <!-- KPI Summary Cards -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-3">
-                <div class="card kpi-card shadow-sm border-0 h-100">
-                    <div class="card-body text-center">
-                        <h6 class="text-muted text-uppercase mb-2">Total Bins</h6>
-                        <h2 id="kpi-total-bins" class="mb-0 fw-bold">-</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card kpi-card shadow-sm border-0 h-100">
-                    <div class="card-body text-center">
-                        <h6 class="text-muted text-uppercase mb-2">Urgent Bins</h6>
-                        <h2 id="kpi-urgent-bins" class="mb-0 fw-bold text-danger">-</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card kpi-card shadow-sm border-0 h-100">
-                    <div class="card-body text-center">
-                        <h6 class="text-muted text-uppercase mb-2">Est. Route Distance</h6>
-                        <h2 id="kpi-route-distance" class="mb-0 fw-bold text-primary">-</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card kpi-card shadow-sm border-0 h-100 bg-success-light">
-                    <div class="card-body text-center">
-                        <h6 class="text-success text-uppercase mb-2">Potential CO2 Saved</h6>
-                        <h2 id="kpi-co2-saved" class="mb-0 fw-bold text-success">-</h2>
-                    </div>
-                </div>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoRoute Operations</title>
+    <meta name="description" content="Smart waste collection: live bin monitoring, overflow forecasting and optimised fleet routing.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f8a5f'/%3E%3Cpath d='M9 20c0-6 5-10 14-11-1 9-5 14-11 14-1 0-2 0-3-1' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <link rel="stylesheet" th:href="@{/css/app.css}" href="/css/app.css">
+    <script>
+        // Apply the saved theme before first paint to avoid a flash.
+        try { const t = localStorage.getItem('ecoroute-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+    </script>
+</head>
+<body>
+<div class="app">
+    <!-- ============ Sidebar ============ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
+            <div>
+                <div class="brand-name">EcoRoute</div>
+                <div class="brand-sub">Smart waste operations</div>
             </div>
         </div>
 
-        <!-- Charts Section -->
-        <div class="row g-4 mb-4">
-            <div class="col-md-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
-                        <h5 class="card-title fw-bold">Bin Status Distribution</h5>
-                    </div>
-                    <div class="card-body d-flex justify-content-center align-items-center">
-                        <canvas id="statusChart" style="max-height: 250px;"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
-                        <h5 class="card-title fw-bold">Current vs Predicted Fill (%)</h5>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="fillChart" style="max-height: 250px;"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row g-4 mb-4">
-            <div class="col-md-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
-                        <h5 class="card-title fw-bold">Sustainability Comparison</h5>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="sustainabilityChart" style="max-height: 250px;"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
-                        <h5 class="card-title fw-bold mb-0">Historical Fill Trend</h5>
-                        <select id="trendBinSelector" class="form-select form-select-sm w-auto">
-                            <option value="">Select a bin...</option>
-                        </select>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="trendChart" style="max-height: 250px;"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <nav class="nav" aria-label="Main">
+            <a href="#overview" data-view="overview" class="nav-link"><i class="fa-solid fa-gauge-high"></i><span>Overview</span></a>
+            <a href="#map" data-view="map" class="nav-link"><i class="fa-solid fa-map-location-dot"></i><span>Live map</span></a>
+            <a href="#bins" data-view="bins" class="nav-link"><i class="fa-solid fa-dumpster"></i><span>Bins</span><span class="nav-count" id="navBinsCount"></span></a>
+            <a href="#routes" data-view="routes" class="nav-link"><i class="fa-solid fa-route"></i><span>Routes &amp; fleet</span><span class="nav-count" id="navRoutesCount"></span></a>
+            <a href="#impact" data-view="impact" class="nav-link"><i class="fa-solid fa-seedling"></i><span>Sustainability</span></a>
+            <a href="#alerts" data-view="alerts" class="nav-link"><i class="fa-solid fa-bell"></i><span>Alerts</span><span class="nav-badge" id="navAlertCount" hidden></span></a>
+        </nav>
 
-        <div class="row g-4 mb-4">
-            <!-- Live Bins Table -->
-            <div class="col-lg-8">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white border-bottom-0 pt-3 d-flex justify-content-between align-items-center">
-                        <h5 class="card-title fw-bold mb-0">Live Bin Status</h5>
-                        <div>
-                            <button class="btn btn-sm btn-outline-danger me-2" id="resetDemoBtn">
-                                <i class="fa-solid fa-rotate-left me-1"></i> Reset Demo Data
-                            </button>
-                            <button class="btn btn-sm btn-primary me-2" id="addBinBtn">
-                                <i class="fa-solid fa-plus me-1"></i> Add Bin
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" id="refreshDataBtn">
-                                <i class="fa-solid fa-sync me-1"></i> Refresh
-                            </button>
-                        </div>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0" id="binsTable">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Bin</th>
-                                        <th>Location</th>
-                                        <th>Current Fill</th>
-                                        <th>Predicted Fill</th>
-                                        <th>Hours to Full</th>
-                                        <th>Status</th>
-                                        <th>Last Updated</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Populated via JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+        <section class="sim-card" aria-label="Simulation controls">
+            <div class="sim-head">
+                <span class="eyebrow">Simulation clock</span>
+                <button class="icon-btn sm" id="simPauseBtn" title="Pause simulation" aria-label="Pause simulation"><i class="fa-solid fa-pause"></i></button>
             </div>
-            
-            <!-- Route Optimization Panel -->
-            <div class="col-lg-4">
-                <div class="card shadow-sm border-0 h-100 bg-white">
-                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
-                        <h5 class="card-title fw-bold mb-0">Optimized Route</h5>
-                        <button class="btn btn-primary btn-sm shadow-sm" id="generateRouteBtn">
-                            <i class="fa-solid fa-route me-1"></i> Generate
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <div id="routeContent" class="d-none">
-                            <div class="route-metrics p-3 bg-light rounded mb-3">
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span class="text-muted small fw-bold">Total Distance</span>
-                                    <span class="fw-bold" id="routeTotalDistance">-</span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span class="text-muted small fw-bold">Est. Fuel</span>
-                                    <span class="fw-bold" id="routeTotalFuel">-</span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span class="text-muted small fw-bold">Est. CO2</span>
-                                    <span class="fw-bold text-success" id="routeTotalCo2">-</span>
-                                </div>
+            <div class="sim-time" id="simTime">--:--</div>
+            <div class="sim-date" id="simDate">&nbsp;</div>
+            <div class="seg" role="radiogroup" aria-label="Simulation speed" id="simSpeed">
+                <button data-speed="1" role="radio">1×</button>
+                <button data-speed="60" role="radio">60×</button>
+                <button data-speed="360" role="radio">360×</button>
+                <button data-speed="1800" role="radio">30m/s</button>
+            </div>
+            <label class="switch-row">
+                <span>
+                    <span class="switch-title">Autopilot</span>
+                    <span class="switch-sub">Plan &amp; dispatch automatically</span>
+                </span>
+                <span class="switch"><input type="checkbox" id="autopilotToggle"><span class="track"></span></span>
+            </label>
+            <button class="btn ghost sm full" id="resetDemoBtn"><i class="fa-solid fa-rotate-left"></i> Reset demo data</button>
+        </section>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <!-- ============ Main ============ -->
+    <div class="main">
+        <header class="topbar">
+            <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu"><i class="fa-solid fa-bars"></i></button>
+            <div class="topbar-title">
+                <h1 id="viewTitle">Overview</h1>
+                <p id="viewSubtitle" class="muted">Live status across the district</p>
+            </div>
+            <div class="topbar-actions">
+                <div class="search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input id="globalSearch" type="search" placeholder="Find a bin…" autocomplete="off" aria-label="Find a bin">
+                    <div class="search-results" id="searchResults" hidden></div>
+                </div>
+                <span class="live-pill" id="livePill" title="Live updates"><span class="dot"></span><span class="lbl">Connecting</span></span>
+                <button class="icon-btn" id="themeBtn" aria-label="Toggle theme" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
+                <button class="btn primary" id="planBtnTop"><i class="fa-solid fa-wand-magic-sparkles"></i><span>Plan routes</span></button>
+            </div>
+        </header>
+
+        <main class="content">
+            <!-- ---------- Overview ---------- -->
+            <section class="view" data-view="overview">
+                <div class="kpis">
+                    <article class="card kpi">
+                        <div class="kpi-label"><i class="fa-solid fa-triangle-exclamation"></i> Need pickup now</div>
+                        <div class="kpi-value"><span id="kpiPickup">–</span><span class="kpi-of" id="kpiPickupOf"></span></div>
+                        <div class="status-bar" id="kpiStatusBar" aria-hidden="true"></div>
+                        <div class="kpi-foot" id="kpiStatusLegend"></div>
+                    </article>
+                    <article class="card kpi">
+                        <div class="kpi-label"><i class="fa-solid fa-fill-drip"></i> Average fill</div>
+                        <div class="kpi-value"><span id="kpiAvgFill">–</span></div>
+                        <div class="kpi-foot" id="kpiLoad">&nbsp;</div>
+                    </article>
+                    <article class="card kpi">
+                        <div class="kpi-label"><i class="fa-solid fa-truck"></i> Fleet</div>
+                        <div class="kpi-value"><span id="kpiFleet">–</span></div>
+                        <div class="kpi-foot" id="kpiFleetFoot">&nbsp;</div>
+                    </article>
+                    <article class="card kpi kpi-accent">
+                        <div class="kpi-label"><i class="fa-solid fa-leaf"></i> CO₂ avoided this cycle</div>
+                        <div class="kpi-value"><span id="kpiCo2">–</span></div>
+                        <div class="kpi-foot" id="kpiCo2Foot">&nbsp;</div>
+                    </article>
+                </div>
+
+                <div class="grid overview-grid">
+                    <article class="card map-card span-2">
+                        <header class="card-head">
+                            <div>
+                                <h2>District map</h2>
+                                <p class="muted">Bins sized by fill, coloured by status</p>
                             </div>
-                            
-                            <h6 class="fw-bold mb-3">Collection Sequence:</h6>
-                            <ul class="list-group list-group-flush route-sequence" id="routeSequenceList">
-                                <!-- Populated via JS -->
-                            </ul>
+                            <a href="#map" class="btn ghost sm">Open map <i class="fa-solid fa-arrow-right"></i></a>
+                        </header>
+                        <div class="map" id="overviewMap"></div>
+                    </article>
+
+                    <article class="card">
+                        <header class="card-head">
+                            <div>
+                                <h2>Next to overflow</h2>
+                                <p class="muted">Soonest forecast time to full</p>
+                            </div>
+                        </header>
+                        <ol class="rank-list" id="nextOverflowList"></ol>
+                    </article>
+
+                    <article class="card span-2">
+                        <header class="card-head">
+                            <div>
+                                <h2>Fill level by zone</h2>
+                                <p class="muted">Average fill now, with bins needing pickup</p>
+                            </div>
+                        </header>
+                        <div class="zone-bars" id="zoneBars"></div>
+                    </article>
+
+                    <article class="card">
+                        <header class="card-head">
+                            <div>
+                                <h2>Recent activity</h2>
+                                <p class="muted">Alerts and route events</p>
+                            </div>
+                            <a href="#alerts" class="btn ghost sm">All</a>
+                        </header>
+                        <ul class="feed" id="activityFeed"></ul>
+                    </article>
+                </div>
+            </section>
+
+            <!-- ---------- Live map ---------- -->
+            <section class="view" data-view="map" hidden>
+                <div class="card map-full">
+                    <div class="map" id="mainMap"></div>
+                    <div class="map-panel" id="mapPanel">
+                        <div class="map-panel-head">
+                            <h2>Layers</h2>
                         </div>
-                        <div id="routeEmptyState" class="text-center text-muted p-5">
-                            <i class="fa-solid fa-map-location-dot fa-3x mb-3 text-light-gray"></i>
-                            <p class="mb-0">Click Generate to calculate the optimal route for urgent bins.</p>
-                        </div>
+                        <div class="chip-group" id="mapStatusFilter"></div>
+                        <label class="check"><input type="checkbox" id="mapShowRoutes" checked> Routes &amp; trucks</label>
+                        <div class="map-routes" id="mapRouteLegend"></div>
                     </div>
                 </div>
+            </section>
+
+            <!-- ---------- Bins ---------- -->
+            <section class="view" data-view="bins" hidden>
+                <div class="card">
+                    <div class="toolbar">
+                        <div class="search inline">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input id="binSearch" type="search" placeholder="Search code, location or zone" aria-label="Search bins">
+                        </div>
+                        <div class="chip-group" id="binStatusFilter"></div>
+                        <select id="binZoneFilter" class="select" aria-label="Filter by zone"><option value="">All zones</option></select>
+                        <div class="toolbar-spacer"></div>
+                        <label class="btn ghost" for="csvInput" title="Import sensor readings (CSV)"><i class="fa-solid fa-file-import"></i><span>Import CSV</span></label>
+                        <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
+                        <button class="btn primary" id="addBinBtn"><i class="fa-solid fa-plus"></i><span>Add bin</span></button>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="table" id="binsTable">
+                            <thead>
+                            <tr>
+                                <th data-sort="binCode">Bin</th>
+                                <th data-sort="zone">Location</th>
+                                <th data-sort="currentFillPercentage" class="w-fill">Fill now</th>
+                                <th data-sort="predictedFillPercentage" class="num">In 24 h</th>
+                                <th data-sort="estimatedHoursToFull" class="num">Full in</th>
+                                <th data-sort="confidence" class="num">Confidence</th>
+                                <th data-sort="status">Status</th>
+                                <th class="actions"><span class="sr-only">Actions</span></th>
+                            </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <div class="empty" id="binsEmpty" hidden>No bins match these filters.</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ---------- Routes & fleet ---------- -->
+            <section class="view" data-view="routes" hidden>
+                <div class="card planner">
+                    <div>
+                        <h2>Route planner</h2>
+                        <p class="muted">Bins that need pickup are split between free trucks by capacity, then each tour is ordered with nearest-neighbour + 2-opt.</p>
+                    </div>
+                    <div class="planner-actions">
+                        <label class="check"><input type="checkbox" id="includeSoon"> Include “soon” bins</label>
+                        <button class="btn ghost" id="dispatchAllBtn"><i class="fa-solid fa-paper-plane"></i> Dispatch all</button>
+                        <button class="btn primary" id="planBtn"><i class="fa-solid fa-wand-magic-sparkles"></i> Plan routes</button>
+                    </div>
+                </div>
+
+                <div class="grid routes-grid">
+                    <div class="route-list" id="routeList"></div>
+                    <aside class="stack">
+                        <article class="card">
+                            <header class="card-head"><div><h2>Fleet</h2><p class="muted">Trucks and crews</p></div></header>
+                            <ul class="fleet-list" id="fleetList"></ul>
+                        </article>
+                        <article class="card">
+                            <header class="card-head"><div><h2>Route history</h2><p class="muted">Most recent first</p></div></header>
+                            <ul class="history-list" id="routeHistory"></ul>
+                        </article>
+                    </aside>
+                </div>
+            </section>
+
+            <!-- ---------- Sustainability ---------- -->
+            <section class="view" data-view="impact" hidden>
+                <div class="impact-hero card">
+                    <div class="hero-main">
+                        <span class="eyebrow">This collection cycle</span>
+                        <div class="hero-figure"><span id="heroCo2Pct">–</span><small>less CO₂</small></div>
+                        <p class="muted" id="heroSentence">than a fixed schedule that visits every bin.</p>
+                    </div>
+                    <div class="hero-stats">
+                        <div><span class="stat-val" id="heroAnnual">–</span><span class="stat-lbl">kg CO₂ avoided per year</span></div>
+                        <div><span class="stat-val" id="heroTrees">–</span><span class="stat-lbl">trees' annual absorption</span></div>
+                        <div><span class="stat-val" id="heroSkipped">–</span><span class="stat-lbl">needless stops skipped</span></div>
+                    </div>
+                </div>
+
+                <div class="grid impact-grid">
+                    <article class="card span-2">
+                        <header class="card-head"><div><h2>Fixed schedule vs data-driven</h2><p class="muted">Same district, same moment, one round trip each</p></div></header>
+                        <div class="compare" id="compareBars"></div>
+                    </article>
+                    <article class="card">
+                        <header class="card-head"><div><h2>Average fill at pickup</h2><p class="muted">Higher means fewer wasted stops</p></div></header>
+                        <div class="gauge-pair" id="fillAtPickup"></div>
+                    </article>
+                    <article class="card span-2">
+                        <header class="card-head"><div><h2>Bins collected per day</h2><p class="muted">Completed routes, last 7 simulated days</p></div></header>
+                        <div class="chart-box"><canvas id="dailyChart" aria-label="Bins collected per day"></canvas></div>
+                        <details class="table-toggle"><summary>Show as table</summary><div id="dailyTable"></div></details>
+                    </article>
+                    <article class="card">
+                        <header class="card-head"><div><h2>Since start</h2><p class="muted">All completed routes</p></div></header>
+                        <dl class="stat-grid" id="lifetimeStats"></dl>
+                    </article>
+                    <article class="card span-3 method">
+                        <h2>How it is calculated</h2>
+                        <div class="method-grid">
+                            <div><h3>Forecast</h3><p>A least-squares trend line over each bin's last 10 hourly readings (restarted after a collection) gives the fill rate and the hour it reaches 100%. R² becomes the confidence score.</p></div>
+                            <div><h3>Priority</h3><p><b>Overflow risk</b>: full or past 100% on trend. <b>Urgent</b>: ≥ 90% or full within 8 h. <b>Soon</b>: full within 24 h.</p></div>
+                            <div><h3>Routing</h3><p>Bins are split between trucks with a capacity-aware sweep around the depot. Each tour starts with nearest-neighbour and is improved with 2-opt. Distances use the Haversine formula.</p></div>
+                            <div><h3>Emissions</h3><p>Fuel = distance ÷ truck km/L (4.5 by default). CO₂ = fuel × 2.68 kg/L diesel. One tree absorbs ≈ 21 kg CO₂ a year.</p></div>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <!-- ---------- Alerts ---------- -->
+            <section class="view" data-view="alerts" hidden>
+                <div class="card">
+                    <div class="toolbar">
+                        <div class="seg" id="alertFilter" role="radiogroup" aria-label="Alert filter">
+                            <button data-filter="open" role="radio">Open</button>
+                            <button data-filter="all" role="radio">All</button>
+                        </div>
+                        <div class="toolbar-spacer"></div>
+                        <button class="btn ghost" id="ackAllBtn"><i class="fa-solid fa-check-double"></i> Acknowledge all</button>
+                    </div>
+                    <ul class="alert-list" id="alertList"></ul>
+                    <div class="empty" id="alertsEmpty" hidden><i class="fa-regular fa-circle-check"></i> All clear: no open alerts.</div>
+                </div>
+            </section>
+        </main>
+    </div>
+</div>
+
+<!-- ============ Bin drawer ============ -->
+<aside class="drawer" id="binDrawer" aria-hidden="true" aria-labelledby="drawerTitle" role="dialog">
+    <header class="drawer-head">
+        <div>
+            <div class="drawer-eyebrow" id="drawerZone"></div>
+            <h2 id="drawerTitle">Bin</h2>
+            <div id="drawerStatus"></div>
+        </div>
+        <button class="icon-btn" data-close-drawer aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    </header>
+    <div class="drawer-body">
+        <dl class="stat-grid" id="drawerStats"></dl>
+        <div class="drawer-section">
+            <h3>Fill history &amp; 24 h forecast</h3>
+            <div class="chart-box tall"><canvas id="forecastChart" aria-label="Fill history and forecast"></canvas></div>
+            <div class="legend-row">
+                <span><i class="sw sw-line"></i> Measured</span>
+                <span><i class="sw sw-dash"></i> Forecast</span>
+                <span><i class="sw sw-limit"></i> 90% urgent line</span>
             </div>
         </div>
     </div>
+    <footer class="drawer-foot">
+        <button class="btn danger ghost" id="drawerDelete"><i class="fa-solid fa-trash"></i> Delete</button>
+        <div class="toolbar-spacer"></div>
+        <button class="btn ghost" id="drawerEdit"><i class="fa-solid fa-pen"></i> Edit</button>
+        <button class="btn primary" id="drawerCollect"><i class="fa-solid fa-check"></i> Mark emptied</button>
+    </footer>
+</aside>
 
-    <!-- Bin Modal -->
-    <div class="modal fade" id="binModal" tabindex="-1" aria-labelledby="binModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="binModalLabel">Add Bin</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="binForm">
-                        <input type="hidden" id="binId">
-                        <div class="mb-3">
-                            <label for="binCode" class="form-label">Bin Code</label>
-                            <input type="text" class="form-control" id="binCode" required>
-                            <div class="invalid-feedback">Bin Code must be provided and unique.</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="locationName" class="form-label">Location Name</label>
-                            <input type="text" class="form-control" id="locationName" required>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="latitude" class="form-label">Latitude</label>
-                                <input type="number" step="any" class="form-control" id="latitude" required min="-90" max="90">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="longitude" class="form-label">Longitude</label>
-                                <input type="number" step="any" class="form-control" id="longitude" required min="-180" max="180">
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="capacity" class="form-label">Capacity (Liters)</label>
-                                <input type="number" step="any" class="form-control" id="capacity" required min="1">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="currentFillPercentage" class="form-label">Current Fill (%)</label>
-                                <input type="number" step="any" class="form-control" id="currentFillPercentage" required min="0" max="100">
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="saveBinBtn">Save Bin</button>
-                </div>
+<!-- ============ Bin form modal ============ -->
+<div class="modal" id="binModal" role="dialog" aria-modal="true" aria-labelledby="binModalTitle" hidden>
+    <div class="modal-card">
+        <header class="modal-head">
+            <h2 id="binModalTitle">Add bin</h2>
+            <button class="icon-btn" data-close-modal aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <form id="binForm" novalidate>
+            <input type="hidden" name="binId">
+            <div class="form-grid">
+                <label class="field"><span>Bin code</span><input name="binCode" required maxlength="20" pattern="[A-Za-z0-9_\-]+" placeholder="B025"><em class="err"></em></label>
+                <label class="field"><span>Waste type</span>
+                    <select name="wasteType"><option value="GENERAL">General</option><option value="RECYCLABLE">Recyclable</option><option value="ORGANIC">Organic</option></select><em class="err"></em>
+                </label>
+                <label class="field span-2"><span>Location name</span><input name="locationName" required maxlength="120" placeholder="e.g. Kondapur Main Road"><em class="err"></em></label>
+                <label class="field"><span>Zone</span><input name="zone" maxlength="60" list="zoneOptions" placeholder="Gachibowli"><em class="err"></em></label>
+                <datalist id="zoneOptions"></datalist>
+                <label class="field"><span>Capacity (L)</span><input name="capacity" type="number" min="1" max="20000" step="1" required value="1100"><em class="err"></em></label>
+                <label class="field"><span>Latitude</span><input name="latitude" type="number" step="any" min="-90" max="90" required><em class="err"></em></label>
+                <label class="field"><span>Longitude</span><input name="longitude" type="number" step="any" min="-180" max="180" required><em class="err"></em></label>
+                <label class="field span-2"><span>Current fill: <b id="fillOut">0%</b></span><input name="currentFillPercentage" type="range" min="0" max="100" step="1" value="0"><em class="err"></em></label>
             </div>
-        </div>
+            <div class="pick-map-wrap">
+                <div class="pick-map" id="pickMap"></div>
+                <p class="muted small"><i class="fa-solid fa-hand-pointer"></i> Click the map to set the location.</p>
+            </div>
+            <p class="form-error" id="formError" hidden></p>
+            <footer class="modal-foot">
+                <button type="button" class="btn ghost" data-close-modal>Cancel</button>
+                <button type="submit" class="btn primary" id="saveBinBtn">Save bin</button>
+            </footer>
+        </form>
     </div>
+</div>
 
-    <div th:replace="~{fragments/layout :: footer_scripts}"></div>
+<!-- ============ Confirm dialog ============ -->
+<div class="modal" id="confirmModal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" hidden>
+    <div class="modal-card narrow">
+        <h2 id="confirmTitle">Are you sure?</h2>
+        <p id="confirmText" class="muted"></p>
+        <footer class="modal-foot">
+            <button class="btn ghost" id="confirmCancel">Cancel</button>
+            <button class="btn danger" id="confirmOk">Confirm</button>
+        </footer>
+    </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script type="module" th:src="@{/js/app.js}" src="/js/app.js"></script>
 </body>
 </html>

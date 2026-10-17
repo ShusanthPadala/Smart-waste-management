@@ -1,118 +1,117 @@
 package com.example.smartwaste.algorithm;
 
 import com.example.smartwaste.config.SustainabilityConfig;
+import com.example.smartwaste.dto.DailyImpact;
+import com.example.smartwaste.dto.LifetimeImpact;
 import com.example.smartwaste.dto.SustainabilityComparisonResult;
 import com.example.smartwaste.entity.Bin;
 import com.example.smartwaste.entity.CollectionRoute;
+import com.example.smartwaste.entity.RouteStatus;
+import com.example.smartwaste.entity.RouteStop;
 import com.example.smartwaste.repository.BinRepository;
 import com.example.smartwaste.repository.CollectionRouteRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import com.example.smartwaste.algorithm.RouteOptimizationService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.List;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.util.*;
 
+/**
+ * Measures the environmental case for data-driven collection: what a fixed "visit every bin"
+ * schedule would cost right now versus an optimised route through only the bins that need it,
+ * plus running totals from routes that actually completed.
+ */
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class SustainabilityService {
 
     private final BinRepository binRepository;
     private final CollectionRouteRepository routeRepository;
     private final RouteOptimizationService routeOptimizationService;
     private final SustainabilityConfig config;
+    private final Clock clock;
 
-    @Value("${app.depot.latitude:40.7120}")
-    private double depotLat;
-
-    @Value("${app.depot.longitude:-74.0040}")
-    private double depotLon;
-
+    @Transactional(readOnly = true)
     public SustainabilityComparisonResult compareStrategies() {
-        SustainabilityComparisonResult result = new SustainabilityComparisonResult();
-        
         List<Bin> allBins = binRepository.findAll();
-        
-        // Calculate Baseline (visiting all bins)
-        SustainabilityComparisonResult.Metrics baseline = calculateBaselineMetrics(allBins);
-        result.setBaseline(baseline);
-        
-        // Calculate Optimized (always regenerate fresh route)
-        CollectionRoute latestRoute = routeOptimizationService.optimizeRoute();
-        SustainabilityComparisonResult.Metrics optimized = new SustainabilityComparisonResult.Metrics();
-        
-        if (latestRoute != null && latestRoute.getStops() != null && !latestRoute.getStops().isEmpty()) {
-            optimized.setTotalDistanceKm(latestRoute.getTotalDistanceKm());
-            optimized.setEstimatedFuelLitres(latestRoute.getEstimatedFuelLitres());
-            optimized.setEstimatedCo2Kg(latestRoute.getEstimatedCo2Kg());
-            optimized.setBinsCollected(latestRoute.getStops().size());
-            optimized.setTotalTrips(1); // one trip if there are stops
-        } else {
-            // No urgent bins => no optimized route
-            optimized.setTotalDistanceKm(0);
-            optimized.setEstimatedFuelLitres(0);
-            optimized.setEstimatedCo2Kg(0);
-            optimized.setBinsCollected(0);
-            optimized.setTotalTrips(0);
+        List<Bin> needed = allBins.stream()
+                .filter(b -> RouteOptimizationService.NEEDS_PICKUP.contains(b.getStatus()))
+                .toList();
+
+        SustainabilityComparisonResult result = new SustainabilityComparisonResult();
+        result.setBaseline(metrics(routeOptimizationService.previewTour(allBins), allBins));
+        result.setOptimized(metrics(routeOptimizationService.previewTour(needed), needed));
+        result.setBinsSkipped(allBins.size() - needed.size());
+
+        SustainabilityComparisonResult.Metrics base = result.getBaseline();
+        SustainabilityComparisonResult.Metrics opt = result.getOptimized();
+        if (base.getTotalDistanceKm() > 0) {
+            result.setDistanceSavedPct(pct(base.getTotalDistanceKm(), opt.getTotalDistanceKm()));
+            result.setFuelSavedPct(pct(base.getEstimatedFuelLitres(), opt.getEstimatedFuelLitres()));
+            result.setCo2SavedPct(pct(base.getEstimatedCo2Kg(), opt.getEstimatedCo2Kg()));
         }
-        result.setOptimized(optimized);
-        
-        // Calculate Improvements
-        if (baseline.getTotalDistanceKm() > 0) {
-            result.setDistanceSavedPct(((baseline.getTotalDistanceKm() - optimized.getTotalDistanceKm()) / baseline.getTotalDistanceKm()) * 100);
-            result.setFuelSavedPct(((baseline.getEstimatedFuelLitres() - optimized.getEstimatedFuelLitres()) / baseline.getEstimatedFuelLitres()) * 100);
-            result.setCo2SavedPct(((baseline.getEstimatedCo2Kg() - optimized.getEstimatedCo2Kg()) / baseline.getEstimatedCo2Kg()) * 100);
-        }
-        
+        // Annualise only a real cycle. With nothing to collect the saving is 100% but momentary,
+        // and multiplying it by 365 would overstate the impact.
+        double annual = needed.isEmpty() ? 0 : Math.max(0, base.getEstimatedCo2Kg() - opt.getEstimatedCo2Kg()) * 365;
+        result.setAnnualCo2SavedKg(annual);
+        result.setTreesEquivalent(annual / config.getCo2PerTreeKgPerYear());
         return result;
     }
-    
-    private SustainabilityComparisonResult.Metrics calculateBaselineMetrics(List<Bin> allBins) {
-        SustainabilityComparisonResult.Metrics metrics = new SustainabilityComparisonResult.Metrics();
-        if (allBins.isEmpty()) return metrics;
 
-        // Use distinct bins to avoid duplicates
-        Set<Long> distinctBinIds = allBins.stream()
-                .map(Bin::getId)
-                .collect(Collectors.toSet());
-        int distinctCount = distinctBinIds.size();
-
-        List<Bin> unvisited = new ArrayList<>(allBins);
-        double currentLat = depotLat;
-        double currentLon = depotLon;
-        double totalDistance = 0.0;
-
-        while (!unvisited.isEmpty()) {
-            Bin nearest = null;
-            double minDistance = Double.MAX_VALUE;
-            for (Bin bin : unvisited) {
-                double dist = routeOptimizationService.calculateHaversineDistance(
-                        currentLat, currentLon, bin.getLatitude(), bin.getLongitude());
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    nearest = bin;
-                }
+    @Transactional(readOnly = true)
+    public LifetimeImpact lifetimeImpact() {
+        List<CollectionRoute> done = routeRepository.findByStatusOrderByCompletedAtAsc(RouteStatus.COMPLETED);
+        int bins = 0;
+        double km = 0, fuel = 0, co2 = 0, fillSum = 0, litres = 0;
+        for (CollectionRoute r : done) {
+            km += r.getTotalDistanceKm();
+            fuel += r.getEstimatedFuelLitres();
+            co2 += r.getEstimatedCo2Kg();
+            for (RouteStop s : r.getStops()) {
+                if (!s.isCollected()) continue;
+                bins++;
+                fillSum += s.getFillAtPlanning();
+                litres += s.getLoadLitres();
             }
-            unvisited.remove(nearest);
-            totalDistance += minDistance;
-            currentLat = nearest.getLatitude();
-            currentLon = nearest.getLongitude();
         }
-        totalDistance += routeOptimizationService.calculateHaversineDistance(
-                currentLat, currentLon, depotLat, depotLon);
+        return new LifetimeImpact(done.size(), bins, km, fuel, co2, bins > 0 ? fillSum / bins : 0, litres);
+    }
 
-        metrics.setTotalDistanceKm(totalDistance);
-        metrics.setEstimatedFuelLitres(totalDistance / config.getFuelEfficiency());
-        metrics.setEstimatedCo2Kg(metrics.getEstimatedFuelLitres() * config.getCo2Factor());
-        metrics.setBinsCollected(distinctCount);
-        // Assume each bin requires its own trip in baseline
-        metrics.setTotalTrips(1);
+    /** Completed-route totals per simulated day for the last {@code days} days (oldest first, gaps filled). */
+    @Transactional(readOnly = true)
+    public List<DailyImpact> dailyImpact(int days) {
+        LocalDate today = LocalDate.now(clock);
+        Map<LocalDate, double[]> byDay = new TreeMap<>();
+        for (int i = days - 1; i >= 0; i--) byDay.put(today.minusDays(i), new double[4]);
 
-        return metrics;
+        for (CollectionRoute r : routeRepository.findByStatusOrderByCompletedAtAsc(RouteStatus.COMPLETED)) {
+            if (r.getCompletedAt() == null) continue;
+            double[] acc = byDay.get(r.getCompletedAt().toLocalDate());
+            if (acc == null) continue;
+            acc[0] += 1;
+            acc[1] += r.getStops().stream().filter(RouteStop::isCollected).count();
+            acc[2] += r.getTotalDistanceKm();
+            acc[3] += r.getEstimatedCo2Kg();
+        }
+        List<DailyImpact> out = new ArrayList<>();
+        byDay.forEach((d, a) -> out.add(new DailyImpact(d, (int) a[0], (int) a[1], a[2], a[3])));
+        return out;
+    }
+
+    private SustainabilityComparisonResult.Metrics metrics(RouteOptimizationService.TourPreview tour, List<Bin> bins) {
+        SustainabilityComparisonResult.Metrics m = new SustainabilityComparisonResult.Metrics();
+        m.setTotalDistanceKm(tour.distanceKm());
+        m.setEstimatedFuelLitres(tour.fuelLitres());
+        m.setEstimatedCo2Kg(tour.co2Kg());
+        m.setBinsCollected(bins.size());
+        m.setTotalTrips(bins.isEmpty() ? 0 : 1);
+        m.setAverageFillAtPickup(bins.stream().mapToDouble(Bin::getCurrentFillPercentage).average().orElse(0));
+        return m;
+    }
+
+    private static double pct(double baseline, double optimised) {
+        return (baseline - optimised) / baseline * 100.0;
     }
 }

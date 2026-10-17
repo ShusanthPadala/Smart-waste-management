@@ -1,72 +1,77 @@
 package com.example.smartwaste.algorithm;
 
 import com.example.smartwaste.dto.PredictionResult;
+import com.example.smartwaste.entity.AlertSeverity;
+import com.example.smartwaste.entity.AlertType;
 import com.example.smartwaste.entity.Bin;
 import com.example.smartwaste.entity.BinStatus;
 import com.example.smartwaste.entity.SensorReading;
 import com.example.smartwaste.repository.BinRepository;
 import com.example.smartwaste.repository.SensorReadingRepository;
+import com.example.smartwaste.service.AlertService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.time.ZoneId;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import org.springframework.test.util.ReflectionTestUtils;
+class PredictionServiceTest {
 
-public class PredictionServiceTest {
+    private final Clock clock = Clock.fixed(Instant.parse("2026-10-18T12:00:00Z"), ZoneId.of("UTC"));
+    private final LocalDateTime now = LocalDateTime.now(clock);
 
-    @Mock
     private BinRepository binRepository;
-
-    @Mock
-    private SensorReadingRepository sensorReadingRepository;
-
-    @InjectMocks
+    private SensorReadingRepository readingRepository;
+    private AlertService alertService;
     private PredictionService predictionService;
+    private Bin bin;
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
-        ReflectionTestUtils.setField(predictionService, "urgentFillThreshold", 90.0);
-        ReflectionTestUtils.setField(predictionService, "urgentHoursThreshold", 8.0);
-        ReflectionTestUtils.setField(predictionService, "soonHoursThreshold", 24.0);
+        binRepository = mock(BinRepository.class);
+        readingRepository = mock(SensorReadingRepository.class);
+        alertService = mock(AlertService.class);
+        predictionService = new PredictionService(binRepository, readingRepository, alertService, clock);
+
+        bin = new Bin();
+        bin.setId(1L);
+        bin.setBinCode("B001");
+        bin.setLocationName("Test Street");
+        bin.setCapacity(100.0);
+        when(binRepository.findAll()).thenReturn(List.of(bin));
     }
-    
-    private SensorReading createReading(Long id, Bin bin, double fill, LocalDateTime time) {
-        SensorReading reading = new SensorReading();
-        reading.setId(id);
-        reading.setBin(bin);
-        reading.setFillPercentage(fill);
-        reading.setTimestamp(time);
-        return reading;
+
+    private void givenReadings(SensorReading... readings) {
+        when(readingRepository.findByBinIdAndTimestampAfterOrderByTimestampAsc(eq(1L), any())).thenReturn(Arrays.asList(readings));
+    }
+
+    private SensorReading reading(double fill, int hoursAgo) {
+        SensorReading r = new SensorReading();
+        r.setBin(bin);
+        r.setFillPercentage(fill);
+        r.setTimestamp(now.minusHours(hoursAgo));
+        return r;
+    }
+
+    private PredictionResult predict() {
+        return predictionService.runPredictionsForAllBins().get(0);
     }
 
     @Test
-    void testInsufficientData() {
-        Bin bin = new Bin();
-        bin.setId(1L);
-        bin.setCapacity(100.0);
+    void insufficientDataFallsBackToCurrentFill() {
         bin.setCurrentFillPercentage(10.0);
-        when(binRepository.findAll()).thenReturn(List.of(bin));
-        when(sensorReadingRepository.findByBinIdOrderByTimestampAsc(1L)).thenReturn(List.of(
-            createReading(1L, bin, 10.0, LocalDateTime.now())
-        ));
+        givenReadings(reading(10.0, 0));
 
-        List<PredictionResult> results = predictionService.runPredictionsForAllBins();
-        assertEquals(1, results.size());
-        PredictionResult result = results.get(0);
-        
-        assertEquals(10.0, result.getCurrentFillPercentage());
+        PredictionResult result = predict();
+
         assertEquals(10.0, result.getPredictedFillPercentage());
         assertNull(result.getEstimatedHoursToFull());
         assertEquals(0.0, result.getConfidence());
@@ -74,146 +79,92 @@ public class PredictionServiceTest {
     }
 
     @Test
-    void testNegativeOrZeroSlope() {
-        Bin bin = new Bin();
-        bin.setId(1L);
-        bin.setCapacity(100.0);
+    void fallingTrendHasNoOverflowForecast() {
         bin.setCurrentFillPercentage(30.0);
-        when(binRepository.findAll()).thenReturn(List.of(bin));
-        
-        LocalDateTime now = LocalDateTime.now();
-        when(sensorReadingRepository.findByBinIdOrderByTimestampAsc(1L)).thenReturn(Arrays.asList(
-            createReading(1L, bin, 50.0, now.minusHours(3)),
-            createReading(2L, bin, 40.0, now.minusHours(2)),
-            createReading(3L, bin, 30.0, now.minusHours(1))
-        ));
+        givenReadings(reading(50, 3), reading(40, 2), reading(30, 1));
 
-        List<PredictionResult> results = predictionService.runPredictionsForAllBins();
-        PredictionResult result = results.get(0);
-        
-        assertEquals(30.0, result.getCurrentFillPercentage());
+        PredictionResult result = predict();
+
         assertEquals(30.0, result.getPredictedFillPercentage());
         assertNull(result.getEstimatedHoursToFull());
-        assertEquals(0.0, result.getConfidence());
+        assertEquals(0.0, result.getFillRatePerHour());
         assertEquals(BinStatus.NORMAL, result.getRecommendedStatus());
     }
 
     @Test
-    void testFastFillingUrgent() {
-        Bin bin = new Bin();
-        bin.setId(1L);
-        bin.setCapacity(100.0);
+    void fastFillingBinIsOverflowRisk() {
         bin.setCurrentFillPercentage(80.0);
-        when(binRepository.findAll()).thenReturn(List.of(bin));
-        
-        LocalDateTime now = LocalDateTime.now();
-        when(sensorReadingRepository.findByBinIdOrderByTimestampAsc(1L)).thenReturn(Arrays.asList(
-            createReading(1L, bin, 10.0, now.minusHours(3)),
-            createReading(2L, bin, 40.0, now.minusHours(2)),
-            createReading(3L, bin, 80.0, now.minusHours(1)) // Fast fill, 35% per hr
-        ));
+        givenReadings(reading(10, 3), reading(40, 2), reading(80, 1)); // ~35% per hour
 
-        List<PredictionResult> results = predictionService.runPredictionsForAllBins();
-        PredictionResult result = results.get(0);
-        
-        assertEquals(80.0, result.getCurrentFillPercentage());
-        assertTrue(result.getPredictedFillPercentage() > 95.0); // Next 24h will exceed 100
+        PredictionResult result = predict();
+
+        assertTrue(result.getPredictedFillPercentage() > 95.0);
         assertNotNull(result.getEstimatedHoursToFull());
         assertTrue(result.getConfidence() > 0.5);
+        assertEquals(35.0, result.getFillRatePerHour(), 0.01);
         assertEquals(BinStatus.OVERFLOW_RISK, result.getRecommendedStatus());
     }
-    
+
     @Test
-    void testOverflowRisk() {
-        Bin bin = new Bin();
-        bin.setId(1L);
-        bin.setCapacity(100.0);
+    void highFillIsUrgent() {
         bin.setCurrentFillPercentage(98.0);
-        when(binRepository.findAll()).thenReturn(List.of(bin));
-        
-        LocalDateTime now = LocalDateTime.now();
-        when(sensorReadingRepository.findByBinIdOrderByTimestampAsc(1L)).thenReturn(Arrays.asList(
-            createReading(1L, bin, 96.0, now.minusHours(3)),
-            createReading(2L, bin, 97.0, now.minusHours(2)),
-            createReading(3L, bin, 98.0, now.minusHours(1))
-        ));
-
-        List<PredictionResult> results = predictionService.runPredictionsForAllBins();
-        PredictionResult result = results.get(0);
-        
-        assertEquals(BinStatus.URGENT, result.getRecommendedStatus());
+        givenReadings(reading(96, 3), reading(97, 2), reading(98, 1));
+        assertEquals(BinStatus.URGENT, predict().getRecommendedStatus());
     }
 
     @Test
-    void testSoonStatus() {
-        Bin bin = new Bin();
-        bin.setId(1L);
-        bin.setCapacity(100.0);
+    void fullBinIsOverflowRiskEvenWithoutTrend() {
+        bin.setCurrentFillPercentage(100.0);
+        givenReadings(reading(100, 1));
+        assertEquals(BinStatus.OVERFLOW_RISK, predict().getRecommendedStatus());
+    }
+
+    @Test
+    void fullWithinADayIsSoon() {
         bin.setCurrentFillPercentage(50.0);
-        when(binRepository.findAll()).thenReturn(List.of(bin));
-        
-        LocalDateTime now = LocalDateTime.now();
-        // 10% fill per hour, current fill is 50%. So it will take 5 hours to reach 100%. 5 is < 8 (Urgent).
-        // Wait, 5 < 8 means URGENT. To test SOON, hoursToFull needs to be between 8 and 24. Let's make it 15 hours.
-        // 100 - 50 = 50. 50 / 15 = 3.33% fill per hour.
-        when(sensorReadingRepository.findByBinIdOrderByTimestampAsc(1L)).thenReturn(Arrays.asList(
-            createReading(1L, bin, 40.0, now.minusHours(3)),
-            createReading(2L, bin, 43.33, now.minusHours(2)),
-            createReading(3L, bin, 46.66, now.minusHours(1))
-        ));
-
-        List<PredictionResult> results = predictionService.runPredictionsForAllBins();
-        PredictionResult result = results.get(0);
-        
-        assertEquals(BinStatus.SOON, result.getRecommendedStatus());
+        givenReadings(reading(40.0, 3), reading(43.33, 2), reading(46.66, 1)); // ~3.3%/h -> ~15h to full
+        assertEquals(BinStatus.SOON, predict().getRecommendedStatus());
     }
 
     @Test
-    void testCollectionEventWithinTrendWindow() {
-        Bin bin = new Bin();
-        bin.setId(1L);
-        bin.setCapacity(100.0);
+    void trendRestartsAfterACollection() {
         bin.setCurrentFillPercentage(15.0);
-        when(binRepository.findAll()).thenReturn(List.of(bin));
-        
-        LocalDateTime now = LocalDateTime.now();
-        when(sensorReadingRepository.findByBinIdOrderByTimestampAsc(1L)).thenReturn(Arrays.asList(
-            createReading(1L, bin, 90.0, now.minusHours(4)),
-            createReading(2L, bin, 95.0, now.minusHours(3)),
-            createReading(3L, bin, 100.0, now.minusHours(2)),
-            createReading(4L, bin, 5.0, now.minusHours(1)),  // Collection event
-            createReading(5L, bin, 15.0, now)                // New trend (10% per hour)
-        ));
+        givenReadings(reading(90, 4), reading(95, 3), reading(100, 2), reading(5, 1), reading(15, 0));
 
-        List<PredictionResult> results = predictionService.runPredictionsForAllBins();
-        PredictionResult result = results.get(0);
-        
-        // With 10% per hr, hours to full = (100 - 15) / 10 = 8.5 hours.
-        // Status should be SOON (8.5 <= 24).
+        PredictionResult result = predict();
+
+        // 10% per hour from 15% -> 8.5 h to full -> SOON.
         assertEquals(BinStatus.SOON, result.getRecommendedStatus());
+        assertEquals(8.5, result.getEstimatedHoursToFull(), 0.01);
         assertTrue(result.getConfidence() > 0.0);
     }
 
     @Test
-    void testCollectionEventWithInsufficientDataAfter() {
-        Bin bin = new Bin();
-        bin.setId(1L);
-        bin.setCapacity(100.0);
+    void singleReadingAfterCollectionGivesNoTrend() {
         bin.setCurrentFillPercentage(5.0);
-        when(binRepository.findAll()).thenReturn(List.of(bin));
-        
-        LocalDateTime now = LocalDateTime.now();
-        when(sensorReadingRepository.findByBinIdOrderByTimestampAsc(1L)).thenReturn(Arrays.asList(
-            createReading(1L, bin, 95.0, now.minusHours(2)),
-            createReading(2L, bin, 100.0, now.minusHours(1)),
-            createReading(3L, bin, 5.0, now)  // Collection event, but only 1 reading after!
-        ));
+        givenReadings(reading(95, 2), reading(100, 1), reading(5, 0));
 
-        List<PredictionResult> results = predictionService.runPredictionsForAllBins();
-        PredictionResult result = results.get(0);
-        
-        // Should fallback to 0 confidence because it can't draw a trend line with 1 point
+        PredictionResult result = predict();
+
         assertEquals(0.0, result.getConfidence());
         assertEquals(BinStatus.NORMAL, result.getRecommendedStatus());
+    }
+
+    @Test
+    void escalationRaisesAnAlertOnceAndPersistsStatus() {
+        bin.setStatus(BinStatus.NORMAL);
+        bin.setCurrentFillPercentage(92.0);
+        givenReadings(reading(90, 2), reading(91, 1), reading(92, 0));
+
+        predict();
+
+        verify(alertService).raiseForBin(eq(bin), eq(AlertType.URGENT), eq(AlertSeverity.WARNING), anyString());
+        verify(binRepository).save(bin);
+        assertEquals(BinStatus.URGENT, bin.getStatus());
+
+        // Same status on the next run: no new alert, no extra save.
+        predict();
+        verify(alertService, times(1)).raiseForBin(any(), any(), any(), anyString());
+        verify(binRepository, times(1)).save(bin);
     }
 }
