@@ -1,0 +1,9 @@
+# Store text with LF in the repository; Windows scripts keep CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+mvnw text eol=lf
+
+*.jar binary
+*.png binary
+*.jpg binary

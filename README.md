@@ -1,5 +1,7 @@
 # EcoRoute: Smart & Sustainable Waste Collection
 
+[![CI](https://github.com/ShusanthPadala/Smart-waste-management/actions/workflows/ci.yml/badge.svg)](https://github.com/ShusanthPadala/Smart-waste-management/actions/workflows/ci.yml)
+
 Fixed collection schedules send trucks to half-empty bins while busy sites overflow. EcoRoute watches every bin's fill sensor, forecasts when each one will be full, and plans fleet routes through only the bins that need emptying. It then shows the distance, diesel and CO₂ saved compared with a fixed schedule.
 
 The demo runs a simulated district of **24 bins in west Hyderabad** (Gachibowli, HITEC City, Kondapur and around) with **3 trucks** on an accelerated clock, so a day of operations plays out in minutes.
@@ -35,12 +37,15 @@ The demo runs a simulated district of **24 bins in west Hyderabad** (Gachibowli,
 
 ## Run it
 
-JDK 17 and Maven are bundled in this folder.
+You need **JDK 17**. Maven is not required, because the Maven wrapper downloads it on first run.
 
-```powershell
-cd "S:\Projects\1M1B project\smart-waste"
-.\run.bat spring-boot:run
+```bash
+git clone https://github.com/ShusanthPadala/Smart-waste-management.git
+cd Smart-waste-management
+./mvnw spring-boot:run        # Windows: run.bat spring-boot:run
 ```
+
+`run.bat` uses a local `jdk17/` and `maven/` folder if one exists next to it, which helps on an offline machine. Otherwise it falls back to your system JDK and the wrapper. Both folders are git-ignored.
 
 Open **http://localhost:8080**. Other useful pages:
 
@@ -50,9 +55,11 @@ Open **http://localhost:8080**. Other useful pages:
 
 Run the tests (33 tests: unit tests for prediction, routing and sustainability, plus end-to-end API tests):
 
-```powershell
-.\run.bat test
+```bash
+./mvnw test                   # Windows: run.bat test
 ```
+
+GitHub Actions runs the same build on every push to `main` and on every pull request.
 
 **Try this:** click **Plan routes**, then **Dispatch all**, open **Live map**, and set the clock to **360×**. Or switch on **Autopilot** and watch the Sustainability page fill up.
 

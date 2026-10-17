@@ -1,10 +1,29 @@
-HELP.md
+### Build output ###
 target/
-!.mvn/wrapper/maven-wrapper.jar
+build/
 !**/src/main/**/target/
 !**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
+HELP.md
 
-### STS ###
+### Maven wrapper (script-only; the jar is downloaded on demand) ###
+.mvn/wrapper/maven-wrapper.jar
+
+### Local toolchain bundled for offline Windows use (not committed) ###
+jdk17/
+maven/
+
+### H2 file databases, if the datasource is switched to file mode ###
+*.mv.db
+*.trace.db
+
+### IDEs ###
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
 .apt_generated
 .classpath
 .factorypath
@@ -12,27 +31,18 @@ target/
 .settings
 .springBeans
 .sts4-cache
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### VS Code ###
-.vscode/
-
-### Custom Additions ###
-jdk17/
-maven/
+### Tools & OS ###
+.claude/
 *.log
+.DS_Store
+Thumbs.db
+
+### JVM crash dumps ###
+hs_err_pid*.log
+replay_pid*.log
