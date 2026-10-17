@@ -60,6 +60,11 @@ export const api = {
     daily: (days = 7) => request('GET', `/api/metrics/daily?days=${days}`),
     zones: () => request('GET', '/api/metrics/zones'),
 
+    settings: () => request('GET', '/api/settings'),
+    updateDistrict: (d) => request('PUT', '/api/settings/district', d),
+    loadDemoCity: (city) => request('POST', '/api/settings/demo-city', { city }),
+    clearDistrict: () => request('POST', '/api/settings/clear'),
+
     simulation: () => request('GET', '/api/simulation'),
     updateSimulation: (patch) => request('POST', '/api/simulation', patch),
     resetDemo: () => request('POST', '/api/simulation/reset'),

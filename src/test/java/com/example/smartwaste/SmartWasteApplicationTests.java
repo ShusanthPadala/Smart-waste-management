@@ -29,7 +29,79 @@ class SmartWasteApplicationTests {
 
     @BeforeEach
     void resetDemo() throws Exception {
-        mvc.perform(post("/api/simulation/reset")).andExpect(status().isOk());
+        // Explicit city so tests that switch cities can't leak into each other.
+        mvc.perform(post("/api/settings/demo-city").contentType(MediaType.APPLICATION_JSON).content("{\"city\":\"visakhapatnam\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void visakhapatnamIsTheDefaultDistrict() throws Exception {
+        mvc.perform(get("/api/settings"))
+                .andExpect(jsonPath("$.cityName").value("Visakhapatnam"))
+                .andExpect(jsonPath("$.demoCity").value("visakhapatnam"))
+                .andExpect(jsonPath("$.depot.lat").value(17.7345))
+                .andExpect(jsonPath("$.demoCities[*].key", hasItems("visakhapatnam", "hyderabad")));
+        mvc.perform(get("/api/bins"))
+                .andExpect(jsonPath("$[0].locationName").value("MVP Colony Sector 6"))
+                .andExpect(jsonPath("$[0].siteProfile").value("RESIDENTIAL"));
+        mvc.perform(get("/api/simulation")).andExpect(jsonPath("$.cityName").value("Visakhapatnam"));
+    }
+
+    @Test
+    void switchingDemoCityReplacesDistrict() throws Exception {
+        mvc.perform(post("/api/settings/demo-city").contentType(MediaType.APPLICATION_JSON).content("{\"city\":\"hyderabad\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cityName").value("Hyderabad"))
+                .andExpect(jsonPath("$.depot.lat").value(17.4401));
+        mvc.perform(get("/api/bins"))
+                .andExpect(jsonPath("$", hasSize(24)))
+                .andExpect(jsonPath("$[0].locationName").value("Green Park Residency"));
+        mvc.perform(get("/api/fleet")).andExpect(jsonPath("$[*].latitude", everyItem(is(17.4401))));
+
+        mvc.perform(post("/api/settings/demo-city").contentType(MediaType.APPLICATION_JSON).content("{\"city\":\"atlantis\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void clearedDistrictCanBeMappedByHand() throws Exception {
+        mvc.perform(post("/api/settings/clear")).andExpect(status().isOk());
+        mvc.perform(get("/api/bins")).andExpect(jsonPath("$", hasSize(0)));
+        mvc.perform(get("/api/fleet")).andExpect(jsonPath("$", hasSize(3)));
+        mvc.perform(get("/api/settings")).andExpect(jsonPath("$.cityName").value("Visakhapatnam"));
+
+        mvc.perform(post("/api/bins").contentType(MediaType.APPLICATION_JSON).content(
+                        "{\"binCode\":\"V1\",\"locationName\":\"Fish Market\",\"siteProfile\":\"MARKET\","
+                                + "\"latitude\":17.70,\"longitude\":83.29,\"capacity\":2400,\"currentFillPercentage\":40}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.siteProfile").value("MARKET"))
+                .andExpect(jsonPath("$.zone").value("Unzoned"));
+    }
+
+    @Test
+    void depotCanBeMovedButNotWhileTrucksAreOut() throws Exception {
+        String moved = "{\"cityName\":\"Vizag\",\"depotLatitude\":17.72,\"depotLongitude\":83.31}";
+        mvc.perform(put("/api/settings/district").contentType(MediaType.APPLICATION_JSON).content(moved))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cityName").value("Vizag"))
+                .andExpect(jsonPath("$.depot.lon").value(83.31));
+        mvc.perform(get("/api/fleet")).andExpect(jsonPath("$[*].longitude", everyItem(is(83.31))));
+
+        mvc.perform(put("/api/settings/district").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cityName\":\"\",\"depotLatitude\":99,\"depotLongitude\":83.31}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.cityName").exists())
+                .andExpect(jsonPath("$.fieldErrors.depotLatitude").exists());
+
+        long routeId = json(mvc.perform(post("/api/routes/plan")).andReturn().getResponse().getContentAsString())
+                .get("routes").get(0).get("id").asLong();
+        mvc.perform(post("/api/routes/" + routeId + "/dispatch")).andExpect(status().isOk());
+        mvc.perform(put("/api/settings/district").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cityName\":\"Vizag\",\"depotLatitude\":17.73,\"depotLongitude\":83.30}"))
+                .andExpect(status().isConflict());
+        // Renaming alone is fine while trucks are out.
+        mvc.perform(put("/api/settings/district").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cityName\":\"Visakhapatnam\",\"depotLatitude\":17.72,\"depotLongitude\":83.31}"))
+                .andExpect(status().isOk());
     }
 
     private JsonNode json(String body) throws Exception {

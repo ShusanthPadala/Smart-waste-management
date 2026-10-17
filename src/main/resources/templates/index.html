@@ -25,7 +25,7 @@
             <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
             <div>
                 <div class="brand-name">EcoRoute</div>
-                <div class="brand-sub">Smart waste operations</div>
+                <div class="brand-sub" id="cityName">Smart waste operations</div>
             </div>
         </div>
 
@@ -36,6 +36,7 @@
             <a href="#routes" data-view="routes" class="nav-link"><i class="fa-solid fa-route"></i><span>Routes &amp; fleet</span><span class="nav-count" id="navRoutesCount"></span></a>
             <a href="#impact" data-view="impact" class="nav-link"><i class="fa-solid fa-seedling"></i><span>Sustainability</span></a>
             <a href="#alerts" data-view="alerts" class="nav-link"><i class="fa-solid fa-bell"></i><span>Alerts</span><span class="nav-badge" id="navAlertCount" hidden></span></a>
+            <a href="#settings" data-view="settings" class="nav-link"><i class="fa-solid fa-sliders"></i><span>Settings</span></a>
         </nav>
 
         <section class="sim-card" aria-label="Simulation controls">
@@ -295,6 +296,56 @@
                     <div class="empty" id="alertsEmpty" hidden><i class="fa-regular fa-circle-check"></i> All clear: no open alerts.</div>
                 </div>
             </section>
+
+            <!-- ---------- Settings ---------- -->
+            <section class="view" data-view="settings" hidden>
+                <div class="grid settings-grid">
+                    <article class="card span-2">
+                        <header class="card-head">
+                            <div>
+                                <h2>District &amp; depot</h2>
+                                <p class="muted">The city you operate in and the depot where every truck starts and ends its route. Click the map to move the depot.</p>
+                            </div>
+                        </header>
+                        <form id="districtForm" novalidate>
+                            <div class="form-grid">
+                                <label class="field span-2"><span>City / district name</span><input name="cityName" required maxlength="60"><em class="err"></em></label>
+                                <label class="field"><span>Depot latitude</span><input name="depotLatitude" type="number" step="any" min="-90" max="90" required><em class="err"></em></label>
+                                <label class="field"><span>Depot longitude</span><input name="depotLongitude" type="number" step="any" min="-180" max="180" required><em class="err"></em></label>
+                            </div>
+                            <div class="map depot-map" id="depotMap"></div>
+                            <p class="muted small"><i class="fa-solid fa-circle-info"></i> Moving the depot drops routes that are planned but not dispatched. It isn't allowed while trucks are on the road.</p>
+                            <p class="form-error" id="districtError" hidden></p>
+                            <footer class="modal-foot">
+                                <button type="button" class="btn ghost" id="districtResetBtn">Undo changes</button>
+                                <button type="submit" class="btn primary" id="districtSaveBtn"><i class="fa-solid fa-floppy-disk"></i> Save district</button>
+                            </footer>
+                        </form>
+                    </article>
+
+                    <div class="stack">
+                        <article class="card">
+                            <header class="card-head">
+                                <div>
+                                    <h2>Demo data</h2>
+                                    <p class="muted">Load a ready-made city with 24 bins, 3 trucks and a week of sensor history.</p>
+                                </div>
+                            </header>
+                            <div class="city-list" id="demoCityList"></div>
+                        </article>
+
+                        <article class="card">
+                            <header class="card-head">
+                                <div>
+                                    <h2>Map your own bins</h2>
+                                    <p class="muted">Start from an empty district and add each bin yourself on the Bins page. The trucks are kept.</p>
+                                </div>
+                            </header>
+                            <button class="btn danger ghost full" id="clearDistrictBtn"><i class="fa-solid fa-eraser"></i> Clear all bins &amp; history</button>
+                        </article>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 </div>
@@ -343,13 +394,22 @@
                 <label class="field"><span>Waste type</span>
                     <select name="wasteType"><option value="GENERAL">General</option><option value="RECYCLABLE">Recyclable</option><option value="ORGANIC">Organic</option></select><em class="err"></em>
                 </label>
-                <label class="field span-2"><span>Location name</span><input name="locationName" required maxlength="120" placeholder="e.g. Kondapur Main Road"><em class="err"></em></label>
-                <label class="field"><span>Zone</span><input name="zone" maxlength="60" list="zoneOptions" placeholder="Gachibowli"><em class="err"></em></label>
+                <label class="field span-2"><span>Location name</span><input name="locationName" required maxlength="120" placeholder="e.g. Beach Road, near VUDA Park"><em class="err"></em></label>
+                <label class="field"><span>Zone</span><input name="zone" maxlength="60" list="zoneOptions" placeholder="e.g. MVP Colony"><em class="err"></em></label>
                 <datalist id="zoneOptions"></datalist>
+                <label class="field"><span>Usage pattern</span>
+                    <select name="siteProfile">
+                        <option value="RESIDENTIAL">Residential: morning &amp; evening peaks</option>
+                        <option value="MARKET">Market: busy all day, fills fast</option>
+                        <option value="COMMERCIAL">Commercial: office hours, quiet weekends</option>
+                        <option value="PARK">Park / beach: busy at weekends</option>
+                        <option value="TRANSIT">Transit: rush hours</option>
+                    </select><em class="err"></em>
+                </label>
                 <label class="field"><span>Capacity (L)</span><input name="capacity" type="number" min="1" max="20000" step="1" required value="1100"><em class="err"></em></label>
+                <label class="field"><span>Current fill: <b id="fillOut">0%</b></span><input name="currentFillPercentage" type="range" min="0" max="100" step="1" value="0"><em class="err"></em></label>
                 <label class="field"><span>Latitude</span><input name="latitude" type="number" step="any" min="-90" max="90" required><em class="err"></em></label>
                 <label class="field"><span>Longitude</span><input name="longitude" type="number" step="any" min="-180" max="180" required><em class="err"></em></label>
-                <label class="field span-2"><span>Current fill: <b id="fillOut">0%</b></span><input name="currentFillPercentage" type="range" min="0" max="100" step="1" value="0"><em class="err"></em></label>
             </div>
             <div class="pick-map-wrap">
                 <div class="pick-map" id="pickMap"></div>

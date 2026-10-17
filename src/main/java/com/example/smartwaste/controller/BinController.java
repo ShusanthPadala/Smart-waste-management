@@ -40,12 +40,14 @@ public class BinController {
     @GetMapping
     @Operation(summary = "All bins with their latest prediction")
     public List<BinView> getAllBins() {
-        return binService.list();
+        // Listing can refresh a stale prediction (and persist the bin's status), so it must not
+        // interleave with a reset that deletes bins underneath it.
+        return worldLock.call(binService::list);
     }
 
     @GetMapping("/{id}")
     public BinView getBin(@PathVariable Long id) {
-        return binService.get(id);
+        return worldLock.call(() -> binService.get(id));
     }
 
     @PostMapping
@@ -68,7 +70,7 @@ public class BinController {
     @GetMapping("/urgent")
     @Operation(summary = "Bins that need collection (URGENT or OVERFLOW_RISK)")
     public List<BinView> getUrgentBins() {
-        return binService.list().stream()
+        return worldLock.call(binService::list).stream()
                 .filter(b -> RouteOptimizationService.NEEDS_PICKUP.contains(b.status()))
                 .toList();
     }

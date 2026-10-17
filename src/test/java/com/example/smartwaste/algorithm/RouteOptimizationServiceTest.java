@@ -1,5 +1,6 @@
 package com.example.smartwaste.algorithm;
 
+import com.example.smartwaste.config.DistrictSettings;
 import com.example.smartwaste.config.SustainabilityConfig;
 import com.example.smartwaste.entity.*;
 import com.example.smartwaste.repository.BinRepository;
@@ -34,7 +35,7 @@ class RouteOptimizationServiceTest {
         vehicleRepository = mock(VehicleRepository.class);
         routeStopRepository = mock(RouteStopRepository.class);
         service = new RouteOptimizationService(binRepository, routeRepository, new SustainabilityConfig(),
-                vehicleRepository, routeStopRepository, Clock.systemDefaultZone());
+                vehicleRepository, routeStopRepository, Clock.systemDefaultZone(), new DistrictSettings());
         when(routeRepository.save(any(CollectionRoute.class))).thenAnswer(i -> i.getArgument(0));
         when(routeRepository.findByStatusInOrderByGeneratedAtDesc(any())).thenReturn(List.of());
         when(routeStopRepository.findAssignedBinIds(any())).thenReturn(List.of());
@@ -64,7 +65,7 @@ class RouteOptimizationServiceTest {
 
     @Test
     void noCandidatesMeansNoRoutes() {
-        when(binRepository.findAll()).thenReturn(List.of(bin(1, BinStatus.NORMAL, 20, 1000, 17.45, 78.36)));
+        when(binRepository.findAll()).thenReturn(List.of(bin(1, BinStatus.NORMAL, 20, 1000, 17.75, 83.36)));
         when(vehicleRepository.findByStatusOrderByIdAsc(VehicleStatus.AVAILABLE)).thenReturn(List.of(truck(1, 5000)));
 
         RouteOptimizationService.PlanOutcome outcome = service.planRoutes(false);
@@ -75,7 +76,7 @@ class RouteOptimizationServiceTest {
 
     @Test
     void noVehiclesLeavesEveryCandidateUnassigned() {
-        when(binRepository.findAll()).thenReturn(List.of(bin(1, BinStatus.URGENT, 95, 1000, 17.45, 78.36)));
+        when(binRepository.findAll()).thenReturn(List.of(bin(1, BinStatus.URGENT, 95, 1000, 17.75, 83.36)));
         when(vehicleRepository.findByStatusOrderByIdAsc(VehicleStatus.AVAILABLE)).thenReturn(List.of());
 
         RouteOptimizationService.PlanOutcome outcome = service.planRoutes(false);
@@ -87,10 +88,10 @@ class RouteOptimizationServiceTest {
     @Test
     void routesOnlyBinsThatNeedPickupAndComputesMetrics() {
         when(binRepository.findAll()).thenReturn(List.of(
-                bin(1, BinStatus.URGENT, 95, 1000, 17.45, 78.36),
-                bin(2, BinStatus.OVERFLOW_RISK, 100, 1000, 17.46, 78.37),
-                bin(3, BinStatus.NORMAL, 30, 1000, 17.43, 78.34),
-                bin(4, BinStatus.SOON, 70, 1000, 17.44, 78.38)));
+                bin(1, BinStatus.URGENT, 95, 1000, 17.75, 83.36),
+                bin(2, BinStatus.OVERFLOW_RISK, 100, 1000, 17.76, 83.37),
+                bin(3, BinStatus.NORMAL, 30, 1000, 17.73, 83.34),
+                bin(4, BinStatus.SOON, 70, 1000, 17.74, 83.38)));
         when(vehicleRepository.findByStatusOrderByIdAsc(VehicleStatus.AVAILABLE)).thenReturn(List.of(truck(1, 5000)));
 
         RouteOptimizationService.PlanOutcome outcome = service.planRoutes(false);
@@ -117,8 +118,8 @@ class RouteOptimizationServiceTest {
     @Test
     void includeSoonAddsSoonBins() {
         when(binRepository.findAll()).thenReturn(List.of(
-                bin(1, BinStatus.URGENT, 95, 1000, 17.45, 78.36),
-                bin(4, BinStatus.SOON, 70, 1000, 17.44, 78.38)));
+                bin(1, BinStatus.URGENT, 95, 1000, 17.75, 83.36),
+                bin(4, BinStatus.SOON, 70, 1000, 17.74, 83.38)));
         when(vehicleRepository.findByStatusOrderByIdAsc(VehicleStatus.AVAILABLE)).thenReturn(List.of(truck(1, 5000)));
 
         assertEquals(2, service.planRoutes(true).routes().get(0).getStops().size());
@@ -129,7 +130,7 @@ class RouteOptimizationServiceTest {
         List<Bin> bins = new ArrayList<>();
         for (int i = 1; i <= 6; i++) {
             bins.add(bin(i, i == 6 ? BinStatus.URGENT : BinStatus.OVERFLOW_RISK, 100, 1000,
-                    17.44 + 0.01 * Math.cos(i), 78.35 + 0.01 * Math.sin(i)));
+                    17.74 + 0.01 * Math.cos(i), 83.35 + 0.01 * Math.sin(i)));
         }
         when(binRepository.findAll()).thenReturn(bins);
         when(vehicleRepository.findByStatusOrderByIdAsc(VehicleStatus.AVAILABLE)).thenReturn(List.of(truck(1, 2500), truck(2, 2500)));
@@ -145,7 +146,7 @@ class RouteOptimizationServiceTest {
 
     @Test
     void binsAlreadyOnAnActiveRouteAreSkipped() {
-        when(binRepository.findAll()).thenReturn(List.of(bin(1, BinStatus.URGENT, 95, 1000, 17.45, 78.36)));
+        when(binRepository.findAll()).thenReturn(List.of(bin(1, BinStatus.URGENT, 95, 1000, 17.75, 83.36)));
         when(routeStopRepository.findAssignedBinIds(any())).thenReturn(List.of(1L));
         when(vehicleRepository.findByStatusOrderByIdAsc(VehicleStatus.AVAILABLE)).thenReturn(List.of(truck(1, 5000)));
 

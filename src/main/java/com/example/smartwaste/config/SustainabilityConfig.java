@@ -26,9 +26,4 @@ public class SustainabilityConfig {
     @Value("${app.sustainability.co2-absorbed-per-tree-kg-per-year:21.0}")
     private double co2PerTreeKgPerYear = 21.0;
 
-    @Value("${app.depot.latitude:17.4401}")
-    private double depotLatitude = 17.4401;
-
-    @Value("${app.depot.longitude:78.3489}")
-    private double depotLongitude = 78.3489;
 }

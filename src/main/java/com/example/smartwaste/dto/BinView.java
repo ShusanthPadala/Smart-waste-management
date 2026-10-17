@@ -1,6 +1,7 @@
 package com.example.smartwaste.dto;
 
 import com.example.smartwaste.entity.BinStatus;
+import com.example.smartwaste.entity.SiteProfile;
 import com.example.smartwaste.entity.WasteType;
 import java.time.LocalDateTime;
 
@@ -11,6 +12,7 @@ public record BinView(
         String locationName,
         String zone,
         WasteType wasteType,
+        SiteProfile siteProfile,
         double latitude,
         double longitude,
         double capacity,

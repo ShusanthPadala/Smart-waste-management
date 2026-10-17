@@ -3,7 +3,7 @@ package com.example.smartwaste.simulation;
 import com.example.smartwaste.algorithm.PredictionService;
 import com.example.smartwaste.algorithm.RouteOptimizationService;
 import com.example.smartwaste.config.SimulationClock;
-import com.example.smartwaste.config.SustainabilityConfig;
+import com.example.smartwaste.config.DistrictSettings;
 import com.example.smartwaste.dto.SimulationState;
 import com.example.smartwaste.entity.*;
 import com.example.smartwaste.repository.*;
@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
@@ -50,7 +49,7 @@ public class SimulationService {
     private final RouteOptimizationService routeOptimizationService;
     private final RouteService routeService;
     private final LiveUpdateService liveUpdateService;
-    private final SustainabilityConfig config;
+    private final DistrictSettings district;
     private final SimulationClock clock;
     private final TransactionTemplate tx;
     private final WorldLock worldLock;
@@ -68,6 +67,7 @@ public class SimulationService {
     private int retentionDays = 14;
 
     private volatile boolean autopilot;
+    private volatile DemoCity currentCity;
     private LocalDateTime lastTick;
     private LocalDateTime lastReadingAt;
     private LocalDateTime lastAutopilotPlan;
@@ -77,9 +77,10 @@ public class SimulationService {
                              VehicleRepository vehicleRepository, CollectionRouteRepository routeRepository,
                              RouteStopRepository routeStopRepository, AlertRepository alertRepository, PredictionService predictionService,
                              RouteOptimizationService routeOptimizationService, RouteService routeService,
-                             LiveUpdateService liveUpdateService, SustainabilityConfig config,
+                             LiveUpdateService liveUpdateService, DistrictSettings district,
                              SimulationClock clock, PlatformTransactionManager transactionManager, WorldLock worldLock,
-                             @Value("${smartwaste.simulation.autopilot:false}") boolean autopilot) {
+                             @Value("${smartwaste.simulation.autopilot:false}") boolean autopilot,
+                             @Value("${smartwaste.demo.city:visakhapatnam}") String demoCity) {
         this.worldLock = worldLock;
         this.binRepository = binRepository;
         this.sensorReadingRepository = sensorReadingRepository;
@@ -91,7 +92,8 @@ public class SimulationService {
         this.routeOptimizationService = routeOptimizationService;
         this.routeService = routeService;
         this.liveUpdateService = liveUpdateService;
-        this.config = config;
+        this.district = district;
+        this.currentCity = DemoCity.byKey(demoCity).orElse(DemoCity.VISAKHAPATNAM);
         this.clock = clock;
         this.tx = new TransactionTemplate(transactionManager);
         this.autopilot = autopilot;
@@ -99,64 +101,33 @@ public class SimulationService {
 
     // ------------------------------------------------------------------ demo district
 
-    enum Profile { RESIDENTIAL, MARKET, COMMERCIAL, PARK, TRANSIT }
-
-    /** A demo site. {@code targetFill} is where the bin stands "now" when the demo is reset. */
-    record Site(String code, String name, String zone, WasteType type, double lat, double lon,
-                double capacity, Profile profile, double baseRate, double targetFill) {}
-
-    static final List<Site> DEMO_SITES = List.of(
-            new Site("B001", "Green Park Residency", "Gachibowli", WasteType.GENERAL, 17.4423, 78.3560, 1100, Profile.RESIDENTIAL, 1.1, 42),
-            new Site("B002", "Sector 12 Apartments", "Kondapur", WasteType.GENERAL, 17.4615, 78.3647, 1100, Profile.RESIDENTIAL, 1.3, 63),
-            new Site("B003", "Lakeview Society", "Khajaguda", WasteType.RECYCLABLE, 17.4150, 78.3800, 660, Profile.RESIDENTIAL, 0.9, 28),
-            new Site("B004", "Community Market", "Madhapur", WasteType.ORGANIC, 17.4483, 78.3915, 2400, Profile.MARKET, 2.6, 95),
-            new Site("B005", "HITEC City Metro Plaza", "HITEC City", WasteType.GENERAL, 17.4474, 78.3762, 1100, Profile.TRANSIT, 2.0, 91),
-            new Site("B006", "Cyber Towers Food Court", "HITEC City", WasteType.ORGANIC, 17.4504, 78.3812, 1100, Profile.COMMERCIAL, 2.2, 82),
-            new Site("B007", "Kondapur Vegetable Market", "Kondapur", WasteType.ORGANIC, 17.4632, 78.3555, 2400, Profile.MARKET, 2.8, 97),
-            new Site("B008", "Botanical Garden Gate", "Kondapur", WasteType.GENERAL, 17.4589, 78.3557, 660, Profile.PARK, 0.8, 35),
-            new Site("B009", "Gachibowli Stadium", "Gachibowli", WasteType.RECYCLABLE, 17.4467, 78.3475, 1100, Profile.PARK, 1.0, 22),
-            new Site("B010", "DLF Cyber City", "Gachibowli", WasteType.RECYCLABLE, 17.4486, 78.3637, 1100, Profile.COMMERCIAL, 1.6, 71),
-            new Site("B011", "Nanakramguda Tech Park", "Financial District", WasteType.RECYCLABLE, 17.4198, 78.3440, 1100, Profile.COMMERCIAL, 1.5, 48),
-            new Site("B012", "Financial District Food Street", "Financial District", WasteType.ORGANIC, 17.4147, 78.3417, 1100, Profile.MARKET, 2.3, 79),
-            new Site("B013", "Manikonda Main Road", "Manikonda", WasteType.GENERAL, 17.4040, 78.3860, 1100, Profile.RESIDENTIAL, 1.2, 57),
-            new Site("B014", "Puppalaguda Colony", "Manikonda", WasteType.GENERAL, 17.3985, 78.3735, 660, Profile.RESIDENTIAL, 1.0, 18),
-            new Site("B015", "Jubilee Hills Check Post", "Jubilee Hills", WasteType.GENERAL, 17.4300, 78.4080, 1100, Profile.TRANSIT, 1.8, 66),
-            new Site("B016", "Durgam Cheruvu Lake Walk", "Madhapur", WasteType.RECYCLABLE, 17.4300, 78.3880, 660, Profile.PARK, 1.1, 52),
-            new Site("B017", "Kothaguda Junction", "Kondapur", WasteType.GENERAL, 17.4610, 78.3700, 1100, Profile.TRANSIT, 1.7, 39),
-            new Site("B018", "Raidurg Metro Station", "HITEC City", WasteType.GENERAL, 17.4402, 78.3830, 1100, Profile.TRANSIT, 1.9, 87),
-            new Site("B019", "Lingampally Bus Depot", "Lingampally", WasteType.GENERAL, 17.4840, 78.3170, 1100, Profile.TRANSIT, 1.6, 44),
-            new Site("B020", "Hafeezpet Railway Station", "Hafeezpet", WasteType.GENERAL, 17.4790, 78.3560, 1100, Profile.TRANSIT, 1.5, 61),
-            new Site("B021", "Indira Nagar", "Gachibowli", WasteType.GENERAL, 17.4370, 78.3550, 1100, Profile.RESIDENTIAL, 1.2, 33),
-            new Site("B022", "University Hostel Block", "Gachibowli", WasteType.ORGANIC, 17.4565, 78.3280, 1100, Profile.RESIDENTIAL, 1.4, 74),
-            new Site("B023", "Whitefields Residency", "Kondapur", WasteType.RECYCLABLE, 17.4570, 78.3700, 660, Profile.RESIDENTIAL, 1.0, 12),
-            new Site("B024", "Gachibowli Recycling Point", "Gachibowli", WasteType.RECYCLABLE, 17.4400, 78.3640, 2400, Profile.COMMERCIAL, 1.4, 55)
-    );
-
-    /** Wipes everything and rebuilds the demo district, fleet and history. */
+    /** Reloads the demo city that is currently selected (Visakhapatnam unless changed in Settings). */
     @Transactional
     public void resetDemoData() {
-        log.info("Resetting demo data...");
-        clock.resetToRealTime();
-        // Bulk deletes run immediately (unlike deleteAll, which Hibernate would flush after the inserts below).
-        routeStopRepository.deleteAllInBatch();
-        routeRepository.deleteAllInBatch();
-        alertRepository.deleteAllInBatch();
-        sensorReadingRepository.deleteAllInBatch();
-        binRepository.deleteAllInBatch();
-        vehicleRepository.deleteAllInBatch();
-        predictionService.clearCache();
+        loadDemoCity(currentCity.key());
+    }
 
-        LocalDateTime now = LocalDateTime.now(clock);
+    /** Wipes everything and loads a ready-made demo city: depot, fleet, 24 bins and 7 days of history. */
+    @Transactional
+    public void loadDemoCity(String key) {
+        DemoCity city = DemoCity.byKey(key)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown demo city: " + key));
+        log.info("Loading demo city {}...", city.name());
+        wipe();
+        currentCity = city;
+        district.update(city.name(), city.depotLatitude(), city.depotLongitude());
         createFleet();
 
+        LocalDateTime now = LocalDateTime.now(clock);
         Random seeded = new Random(42);
         List<SensorReading> readings = new ArrayList<>();
-        for (Site s : DEMO_SITES) {
+        for (DemoCity.Site s : city.sites()) {
             Bin bin = new Bin();
             bin.setBinCode(s.code());
             bin.setLocationName(s.name());
             bin.setZone(s.zone());
             bin.setWasteType(s.type());
+            bin.setSiteProfile(s.profile());
             bin.setLatitude(s.lat());
             bin.setLongitude(s.lon());
             bin.setCapacity(s.capacity());
@@ -165,18 +136,45 @@ public class SimulationService {
             bin.setLastUpdated(now);
             bin.setStatus(BinStatus.NORMAL);
             bin = binRepository.save(bin);
-            readings.addAll(backfillHistory(bin, s, now, seeded));
+            readings.addAll(backfillHistory(bin, s.profile(), s.baseRate(), s.targetFill(), now, seeded));
         }
         sensorReadingRepository.saveAll(readings);
+        predictionService.runPredictionsForAllBins();
+        log.info("Demo city {} loaded: {} bins, {} readings.", city.name(), city.sites().size(), readings.size());
+    }
 
+    /**
+     * Removes every bin, route, alert and reading but keeps the district settings and a fresh fleet,
+     * so the operator can map their own bins from scratch.
+     */
+    @Transactional
+    public void clearDistrict() {
+        log.info("Clearing district {}", district.getCityName());
+        wipe();
+        createFleet();
+    }
+
+    public DemoCity currentCity() {
+        return currentCity;
+    }
+
+    private void wipe() {
+        clock.resetToRealTime();
+        // Bulk deletes run immediately (unlike deleteAll, which Hibernate would flush after later inserts).
+        routeStopRepository.deleteAllInBatch();
+        routeRepository.deleteAllInBatch();
+        alertRepository.deleteAllInBatch();
+        sensorReadingRepository.deleteAllInBatch();
+        binRepository.deleteAllInBatch();
+        vehicleRepository.deleteAllInBatch();
+        predictionService.clearCache();
+        LocalDateTime now = LocalDateTime.now(clock);
         lastTick = now;
         lastReadingAt = now;
         lastAutopilotPlan = null;
-        predictionService.runPredictionsForAllBins();
-        log.info("Demo data reset complete: {} bins, {} readings.", DEMO_SITES.size(), readings.size());
     }
 
-    /** Re-generates history for the existing bins (kept for the original /api/simulation/run endpoint). */
+    /** Re-generates 7 days of history for the current bins, keeping their current fill level. */
     @Transactional
     public void generateHistoricalData() {
         LocalDateTime now = LocalDateTime.now(clock);
@@ -184,13 +182,7 @@ public class SimulationService {
         Random seeded = new Random(42);
         List<SensorReading> readings = new ArrayList<>();
         for (Bin bin : binRepository.findAll()) {
-            Site site = DEMO_SITES.stream().filter(s -> s.code().equals(bin.getBinCode())).findFirst()
-                    .orElse(new Site(bin.getBinCode(), bin.getLocationName(), bin.getZone(), bin.getWasteType(),
-                            bin.getLatitude(), bin.getLongitude(), bin.getCapacity(), Profile.RESIDENTIAL,
-                            bin.getBaseFillRatePerHour() > 0 ? bin.getBaseFillRatePerHour() : 1.2,
-                            bin.getCurrentFillPercentage()));
-            bin.setCurrentFillPercentage(site.targetFill());
-            readings.addAll(backfillHistory(bin, site, now, seeded));
+            readings.addAll(backfillHistory(bin, profileOf(bin), rateOf(bin), bin.getCurrentFillPercentage(), now, seeded));
         }
         sensorReadingRepository.saveAll(readings);
         predictionService.clearCache();
@@ -198,13 +190,14 @@ public class SimulationService {
     }
 
     /**
-     * Walks backwards from "now" so the newest reading equals the site's target fill. Each step
-     * subtracts an hour of usage; when the bin would drop below empty, that was a collection, and
-     * before it the bin stood at a typical pickup level.
+     * Walks backwards from "now" so the newest reading equals {@code targetFill}. Each step subtracts
+     * an hour of usage; when the bin would drop below empty, that was a collection, and before it the
+     * bin stood at a typical pickup level.
      */
-    private List<SensorReading> backfillHistory(Bin bin, Site site, LocalDateTime now, Random rnd) {
+    private List<SensorReading> backfillHistory(Bin bin, SiteProfile profile, double baseRate, double targetFill,
+                                                LocalDateTime now, Random rnd) {
         List<SensorReading> out = new ArrayList<>();
-        double fill = site.targetFill();
+        double fill = targetFill;
         LocalDateTime t = now;
         LocalDateTime start = now.minusDays(historyDays);
         LocalDateTime lastCollection = null;
@@ -215,7 +208,7 @@ public class SimulationService {
             r.setFillPercentage(round1(fill));
             out.add(r);
 
-            fill -= hourlyIncrement(site.profile(), site.baseRate(), t.minusMinutes(30), rnd);
+            fill -= hourlyIncrement(profile, baseRate, t.minusMinutes(30), rnd);
             if (fill < 1.0) {
                 if (lastCollection == null) lastCollection = t;
                 fill = 70 + rnd.nextDouble() * 25; // the level it was emptied at
@@ -241,35 +234,24 @@ public class SimulationService {
         v.setCapacity(capacity);
         v.setFuelEfficiency(kmPerLitre);
         v.setStatus(VehicleStatus.AVAILABLE);
-        v.setCurrentLatitude(config.getDepotLatitude());
-        v.setCurrentLongitude(config.getDepotLongitude());
+        v.setCurrentLatitude(district.getDepotLatitude());
+        v.setCurrentLongitude(district.getDepotLongitude());
         return v;
     }
 
     // ------------------------------------------------------------------ usage model
 
     /** Fill added over one hour around {@code at}, in percentage points. */
-    static double hourlyIncrement(Profile profile, double baseRate, LocalDateTime at, Random rnd) {
-        return baseRate * usageMultiplier(profile, at) * (0.85 + rnd.nextDouble() * 0.3);
+    static double hourlyIncrement(SiteProfile profile, double baseRate, LocalDateTime at, Random rnd) {
+        return baseRate * profile.usageMultiplier(at) * (0.85 + rnd.nextDouble() * 0.3);
     }
 
-    /** How busy a site is at a given time relative to its average (roughly averages to 1 over a week). */
-    static double usageMultiplier(Profile profile, LocalDateTime at) {
-        int h = at.getHour();
-        boolean weekend = at.getDayOfWeek() == DayOfWeek.SATURDAY || at.getDayOfWeek() == DayOfWeek.SUNDAY;
-        boolean night = h < 6;
-        return switch (profile) {
-            case RESIDENTIAL -> night ? 0.25 : (h >= 7 && h <= 9) || (h >= 19 && h <= 22) ? 1.8 : 0.9;
-            case MARKET -> night ? 0.1 : (h >= 8 && h <= 20 ? 1.6 : 0.5) * (weekend ? 1.4 : 1.0);
-            case COMMERCIAL -> weekend ? 0.3 : (h >= 9 && h <= 18 ? 2.0 : 0.25);
-            case PARK -> night ? 0.1 : ((h >= 6 && h <= 9) || (h >= 16 && h <= 20) ? 1.7 : 0.8) * (weekend ? 1.6 : 0.9);
-            case TRANSIT -> night ? 0.2 : (h >= 8 && h <= 10) || (h >= 17 && h <= 20) ? 2.0 : 1.0;
-        };
+    private static SiteProfile profileOf(Bin bin) {
+        return bin.getSiteProfile() != null ? bin.getSiteProfile() : SiteProfile.RESIDENTIAL;
     }
 
-    private static Profile profileFor(Bin bin) {
-        return DEMO_SITES.stream().filter(s -> s.code().equals(bin.getBinCode())).map(Site::profile)
-                .findFirst().orElse(Profile.RESIDENTIAL);
+    private static double rateOf(Bin bin) {
+        return bin.getBaseFillRatePerHour() > 0 ? bin.getBaseFillRatePerHour() : profileOf(bin).defaultRatePerHour();
     }
 
     // ------------------------------------------------------------------ live loop
@@ -305,8 +287,7 @@ public class SimulationService {
         List<Bin> bins = binRepository.findAll();
         List<SensorReading> readings = new ArrayList<>();
         for (Bin bin : bins) {
-            double rate = bin.getBaseFillRatePerHour() > 0 ? bin.getBaseFillRatePerHour() : 1.2;
-            double inc = hourlyIncrement(profileFor(bin), rate, now, random) * dtHours;
+            double inc = hourlyIncrement(profileOf(bin), rateOf(bin), now, random) * dtHours;
             bin.setCurrentFillPercentage(Math.min(100.0, bin.getCurrentFillPercentage() + inc));
             bin.setLastUpdated(now);
             if (storeReading) {

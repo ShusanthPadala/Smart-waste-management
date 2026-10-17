@@ -4,7 +4,7 @@
 
 Fixed collection schedules send trucks to half-empty bins while busy sites overflow. EcoRoute watches every bin's fill sensor, forecasts when each one will be full, and plans fleet routes through only the bins that need emptying. It then shows the distance, diesel and CO₂ saved compared with a fixed schedule.
 
-The demo runs a simulated district of **24 bins in west Hyderabad** (Gachibowli, HITEC City, Kondapur and around) with **3 trucks** on an accelerated clock, so a day of operations plays out in minutes.
+The demo runs a simulated district of **24 bins across Visakhapatnam** (MVP Colony, Beach Road, Dwaraka Nagar, One Town, Seethammadhara and around) with **3 trucks** on an accelerated clock, so a day of operations plays out in minutes. A Hyderabad dataset is also included, and you can map your own city from the Settings page.
 
 ## What's inside
 
@@ -16,6 +16,7 @@ The demo runs a simulated district of **24 bins in west Hyderabad** (Gachibowli,
 | **Routes & fleet** | Multi-truck, capacity-aware planning; dispatch / complete / cancel; load vs capacity; 2-opt savings per route; fleet status and route history. |
 | **Sustainability** | Fixed schedule vs data-driven for distance, diesel and CO₂; average fill at pickup; bins collected per day; lifetime totals; methodology. |
 | **Alerts** | Raised automatically when a bin turns urgent or reaches overflow risk, and on route events. Acknowledge one or all. Open alerts resolve automatically when a bin is emptied. |
+| **Settings** | Rename the district and move the depot by clicking a map; load a demo city (Visakhapatnam or Hyderabad); or clear everything and add your own bins, each with a usage pattern (residential, market, commercial, park, transit) that drives how it fills. |
 | **Simulation controls** | Pause or resume, run at 1× / 60× / 360× / 1800×, **Autopilot** (plans and dispatches on its own), reset demo data. |
 | **Polish** | Light & dark themes, responsive down to phone width, keyboard shortcuts (`/` to search, `Esc` to close). |
 
@@ -53,7 +54,7 @@ Open **http://localhost:8080**. Other useful pages:
 * Health check: http://localhost:8080/actuator/health
 * H2 console: http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:smartwaste`, user `sa`, password `password`)
 
-Run the tests (33 tests: unit tests for prediction, routing and sustainability, plus end-to-end API tests):
+Run the tests (37 tests: unit tests for prediction, routing and sustainability, plus end-to-end API tests):
 
 ```bash
 ./mvnw test                   # Windows: run.bat test
@@ -96,7 +97,11 @@ All JSON. Errors come back as `{status, error, message, fieldErrors?}`.
 | `POST /api/alerts/ack-all` | Acknowledge all alerts |
 | `GET /api/simulation` | Clock, speed, paused, autopilot, depot |
 | `POST /api/simulation` | Change state with `{speed, paused, autopilot}` |
-| `POST /api/simulation/reset` | Rebuild the demo district (`POST /api/bins/reset-demo` is an alias) |
+| `POST /api/simulation/reset` | Reload the current demo city (`POST /api/bins/reset-demo` is an alias) |
+| `GET /api/settings` | District name, depot, loaded demo city and the available demo cities |
+| `PUT /api/settings/district` | Change `{cityName, depotLatitude, depotLongitude}`. This is refused while routes are in progress. |
+| `POST /api/settings/demo-city` | Replace all data with a demo city `{city: "visakhapatnam" \| "hyderabad"}` |
+| `POST /api/settings/clear` | Delete all bins, routes, alerts and readings, keeping the district and trucks |
 | `POST /api/simulation/import` | Multipart CSV of `timestamp,bin,fillPercentage`; `bin` is a code or an id (see `sample-sensor-data.csv`) |
 | `GET /api/stream` | Server-Sent Events: `tick` after each simulation step, `alert` when one is raised |
 
@@ -119,7 +124,9 @@ src/main/resources/
 
 | Property | Default | Meaning |
 |---|---|---|
-| `app.depot.latitude` / `longitude` | 17.4401 / 78.3489 | Where routes start and end |
+| `app.district.name` | Visakhapatnam | District name shown in the app |
+| `app.depot.latitude` / `longitude` | 17.7345 / 83.2985 | Where routes start and end |
+| `smartwaste.demo.city` | visakhapatnam | Demo dataset loaded on start-up (`visakhapatnam` or `hyderabad`) |
 | `app.threshold.urgent` | 90 | Fill % that is urgent on its own |
 | `app.threshold.urgent-hours` / `soon-hours` | 8 / 24 | Time to full for urgent / soon |
 | `app.sustainability.*` | 4.5 km/L, 2.68 kg/L, 25 km/h, 3 min/stop | Emissions and timing model |

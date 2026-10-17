@@ -20,6 +20,10 @@ public class Bin {
     @Enumerated(EnumType.STRING)
     private WasteType wasteType = WasteType.GENERAL;
 
+    /** How the surroundings are used (residential, market, ...); shapes the simulated fill rate. */
+    @Enumerated(EnumType.STRING)
+    private SiteProfile siteProfile = SiteProfile.RESIDENTIAL;
+
     private double latitude;
     private double longitude;
 

@@ -567,6 +567,20 @@ button, input, select { font: inherit; color: inherit; }
 .table-toggle td, .table-toggle th { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
 .table-toggle th:first-child, .table-toggle td:first-child { text-align: left; }
 
+/* ----------------------------------------------------------- settings */
+.settings-grid { align-items: start; }
+.depot-map { height: 320px; margin: 14px 0 8px; border: 1px solid var(--border); }
+.city-list { display: flex; flex-direction: column; gap: 8px; }
+.city-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.city-row .ci { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
+.city-row .cn { flex: 1; min-width: 0; }
+.city-row .cn b { display: block; }
+.city-row .cn span { font-size: 12px; color: var(--muted); }
+.city-row.current { border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+
 /* ----------------------------------------------------------- alerts */
 .alert-list { list-style: none; margin: 0 -18px -18px; padding: 0; }
 .alert-list li { display: grid; grid-template-columns: 34px 1fr auto; gap: 14px; align-items: center; padding: 14px 18px; border-top: 1px solid var(--border); }

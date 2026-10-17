@@ -39,6 +39,7 @@ const VIEWS = {
     routes: ['Routes & fleet', 'Plan, dispatch and track collections'],
     impact: ['Sustainability', 'Distance, fuel and CO₂ compared with a fixed schedule'],
     alerts: ['Alerts', 'Overflow warnings and route events'],
+    settings: ['Settings', 'District, depot and demo data'],
 };
 
 let overviewMap = null;
@@ -46,6 +47,7 @@ let mainMap = null;
 let forecastChart = null;
 let dailyChart = null;
 let picker = null;
+let depotMap = null;
 
 // =====================================================================
 // Routing
@@ -62,6 +64,7 @@ function showView(view) {
 
     if (view === 'overview') { ensureOverviewMap(); overviewMap.invalidate(); }
     if (view === 'map') { ensureMainMap(); mainMap.invalidate(); }
+    if (view === 'settings') { ensureDepotMap(); depotMap.invalidate(); }
     refresh(true);
 }
 window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
@@ -101,6 +104,7 @@ async function refresh(full = false) {
             extra.push(api.daily(7).then((d) => { state.daily = d; }));
         }
         if (v === 'routes') extra.push(api.recentRoutes().then((r) => { state.recent = r; }));
+        if (v === 'settings' && (full || !state.settings)) extra.push(api.settings().then((st) => { state.settings = st; }));
         await Promise.all(extra);
 
         renderAll();
@@ -171,6 +175,7 @@ function renderAll() {
         case 'routes': renderRoutes(); break;
         case 'impact': renderImpact(); break;
         case 'alerts': renderAlerts(); break;
+        case 'settings': renderSettings(); break;
     }
 }
 
@@ -186,6 +191,10 @@ function renderChrome() {
         pb.innerHTML = `<i class="fa-solid ${sim.paused ? 'fa-play' : 'fa-pause'}"></i>`;
         pb.title = sim.paused ? 'Resume simulation' : 'Pause simulation';
         $('#autopilotToggle').checked = !!sim.autopilot;
+        if (sim.cityName) {
+            $('#cityName').textContent = `${sim.cityName} · waste operations`;
+            if (state.view === 'overview') $('#viewSubtitle').textContent = `Live status across ${sim.cityName}`;
+        }
         if (sim.paused) setLive('paused');
     }
     if (s) {
@@ -358,6 +367,9 @@ function renderBins() {
         th.classList.toggle('asc', th.dataset.sort === key && dir === 1);
     });
     $('#binsEmpty').hidden = rows.length > 0;
+    $('#binsEmpty').textContent = state.bins.length
+        ? 'No bins match these filters.'
+        : 'No bins yet. Use “Add bin” to place your first one on the map.';
     $('#binsTable tbody').innerHTML = rows.map((b) => {
         const conf = Math.round((b.confidence || 0) * 5);
         const w = WASTE[b.wasteType] || WASTE.GENERAL;
@@ -686,7 +698,7 @@ async function refreshDrawer() {
     }
     if (state.drawerBinId !== id) return;
     const w = WASTE[bin.wasteType] || WASTE.GENERAL;
-    $('#drawerZone').innerHTML = `${esc(bin.zone || '')} · <i class="fa-solid ${w.icon}"></i> ${w.label}`;
+    $('#drawerZone').innerHTML = `${esc(bin.zone || '')} · <i class="fa-solid ${w.icon}"></i> ${w.label} · ${PROFILE[bin.siteProfile] || 'Residential'}`;
     $('#drawerTitle').textContent = `${bin.binCode} · ${bin.locationName}`;
     $('#drawerStatus').innerHTML = statusPill(bin.status) + (bin.onActiveRoute ? ' <span class="on-route"><i class="fa-solid fa-truck"></i> on an active route</span>' : '');
     $('#drawerStats').innerHTML = `
@@ -754,7 +766,7 @@ function openBinForm(bin) {
     $('#binModalTitle').textContent = bin ? `Edit ${bin.binCode}` : 'Add bin';
     form.elements.binId.value = bin?.id ?? '';
     if (bin) {
-        ['binCode', 'locationName', 'zone', 'wasteType', 'latitude', 'longitude', 'capacity'].forEach((k) => { form[k].value = bin[k] ?? ''; });
+        ['binCode', 'locationName', 'zone', 'wasteType', 'siteProfile', 'latitude', 'longitude', 'capacity'].forEach((k) => { form[k].value = bin[k] ?? ''; });
         form.currentFillPercentage.value = Math.round(bin.currentFillPercentage);
     } else {
         const next = 1 + Math.max(0, ...state.bins.map((b) => Number(String(b.binCode).replace(/\D/g, '')) || 0));
@@ -813,6 +825,7 @@ form.addEventListener('submit', async (e) => {
         locationName: form.locationName.value.trim(),
         zone: form.zone.value.trim(),
         wasteType: form.wasteType.value,
+        siteProfile: form.siteProfile.value,
         latitude: parseFloat(form.latitude.value),
         longitude: parseFloat(form.longitude.value),
         capacity: parseFloat(form.capacity.value),
@@ -918,10 +931,138 @@ $('#resetDemoBtn').addEventListener('click', async (e) => {
     const ok = await confirmDialog('Reset demo data?', 'All bins, routes, alerts and readings are replaced with the original demo district.', 'Reset');
     if (!ok) return;
     await busy(e.currentTarget, () => api.resetDemo());
-    closeDrawer();
     toast('Demo data restored', '24 bins with 7 days of sensor history.');
-    refresh(true);
+    afterDistrictChange();
 });
+
+// =====================================================================
+// Settings: district, depot and demo data
+// =====================================================================
+const PROFILE = { RESIDENTIAL: 'Residential', MARKET: 'Market', COMMERCIAL: 'Commercial', PARK: 'Park / beach', TRANSIT: 'Transit' };
+const districtForm = $('#districtForm');
+let districtDirty = false;
+
+function ensureDepotMap() {
+    if (depotMap) return;
+    depotMap = new DistrictMap($('#depotMap'), {
+        onBinClick: openBin,
+        onMapClick: (lat, lon) => {
+            districtForm.depotLatitude.value = lat.toFixed(6);
+            districtForm.depotLongitude.value = lon.toFixed(6);
+            districtDirty = true;
+            drawDepotPreview();
+        },
+    });
+}
+
+function pendingDepot() {
+    const lat = parseFloat(districtForm.depotLatitude.value);
+    const lon = parseFloat(districtForm.depotLongitude.value);
+    return Number.isNaN(lat) || Number.isNaN(lon) ? state.settings?.depot : { lat, lon };
+}
+
+function drawDepotPreview() {
+    ensureDepotMap();
+    depotMap.update({ bins: state.bins, depot: pendingDepot(), showRoutes: false });
+}
+
+function fillDistrictForm() {
+    const st = state.settings;
+    if (!st) return;
+    districtForm.cityName.value = st.cityName;
+    districtForm.depotLatitude.value = st.depot.lat;
+    districtForm.depotLongitude.value = st.depot.lon;
+    districtDirty = false;
+    $('#districtError').hidden = true;
+    $$('.field', districtForm).forEach((f) => { f.classList.remove('invalid'); $('.err', f).textContent = ''; });
+}
+
+function renderSettings() {
+    const st = state.settings;
+    if (!st) return;
+    if (!districtDirty) fillDistrictForm();
+    drawDepotPreview();
+    // Rebuild only on change, so live ticks don't steal focus from these buttons.
+    const html = st.demoCities.map((c) => {
+        const loaded = c.key === st.demoCity && c.name === st.cityName;
+        return `<div class="city-row ${loaded ? 'current' : ''}">
+            <span class="ci"><i class="fa-solid fa-city"></i></span>
+            <div class="cn"><b>${esc(c.name)}</b><span>${c.bins} bins · 3 trucks${loaded ? ' · currently loaded' : ''}</span></div>
+            <button class="btn ${loaded ? 'ghost' : 'primary'} sm" data-city="${esc(c.key)}">${loaded ? 'Reload' : 'Load'}</button>
+        </div>`;
+    }).join('');
+    if (renderSettings.cityHtml !== html) {
+        $('#demoCityList').innerHTML = html;
+        renderSettings.cityHtml = html;
+    }
+}
+
+['cityName', 'depotLatitude', 'depotLongitude'].forEach((k) => districtForm[k].addEventListener('input', () => {
+    districtDirty = true;
+    if (k !== 'cityName') drawDepotPreview();
+}));
+$('#districtResetBtn').addEventListener('click', () => { fillDistrictForm(); drawDepotPreview(); });
+
+districtForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('#districtError').hidden = true;
+    let ok = true;
+    for (const el of districtForm.elements) {
+        const f = el.closest?.('.field');
+        if (!f || !el.name) continue;
+        const valid = el.checkValidity();
+        f.classList.toggle('invalid', !valid);
+        $('.err', f).textContent = valid ? '' : el.validationMessage;
+        ok = ok && valid;
+    }
+    if (!ok) return;
+    const btn = $('#districtSaveBtn');
+    btn.disabled = true;
+    try {
+        state.settings = await api.updateDistrict({
+            cityName: districtForm.cityName.value.trim(),
+            depotLatitude: parseFloat(districtForm.depotLatitude.value),
+            depotLongitude: parseFloat(districtForm.depotLongitude.value),
+        });
+        toast('District saved', `${state.settings.cityName} · depot updated.`);
+        afterDistrictChange();
+    } catch (err) {
+        $('#districtError').textContent = err.message;
+        $('#districtError').hidden = false;
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+$('#demoCityList').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-city]');
+    if (!b) return;
+    const city = state.settings.demoCities.find((c) => c.key === b.dataset.city);
+    const ok = await confirmDialog(`Load ${city.name}?`, 'All current bins, routes, alerts and readings are replaced with the demo city. The district name and depot change to match.', `Load ${city.name}`);
+    if (!ok) return;
+    state.settings = await busy(b, () => api.loadDemoCity(city.key));
+    toast(`${city.name} loaded`, `${city.bins} bins with 7 days of sensor history.`);
+    afterDistrictChange();
+});
+
+$('#clearDistrictBtn').addEventListener('click', async (e) => {
+    const ok = await confirmDialog('Clear all bins?', 'Every bin, route, alert and sensor reading is deleted. The district name, depot and trucks are kept.', 'Clear district');
+    if (!ok) return;
+    state.settings = await busy(e.currentTarget, () => api.clearDistrict());
+    toast('District cleared', 'Add your bins on the Bins page; click the map in the form to place each one.');
+    afterDistrictChange();
+});
+
+/** After the whole district changed: drop stale views and re-frame every map. */
+function afterDistrictChange() {
+    closeDrawer();
+    districtDirty = false;
+    state.comparison = null;
+    state.zones = [];
+    state.daily = [];
+    [overviewMap, mainMap, depotMap].forEach((m) => m?.refit());
+    refresh(true);
+}
 
 // =====================================================================
 // Theme, sidebar, keyboard

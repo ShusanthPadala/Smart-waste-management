@@ -1,6 +1,6 @@
 package com.example.smartwaste.controller;
 
-import com.example.smartwaste.config.SustainabilityConfig;
+import com.example.smartwaste.config.DistrictSettings;
 import com.example.smartwaste.dto.SimulationState;
 import com.example.smartwaste.simulation.SimulationService;
 import com.example.smartwaste.simulation.WorldLock;
@@ -23,7 +23,7 @@ import java.util.Map;
 public class SimulationController {
     private final SimulationService simulationService;
     private final WorldLock worldLock;
-    private final SustainabilityConfig config;
+    private final DistrictSettings district;
 
     public record StateUpdate(Double speed, Boolean paused, Boolean autopilot) {}
 
@@ -73,7 +73,8 @@ public class SimulationController {
         m.put("paused", s.paused());
         m.put("enabled", s.enabled());
         m.put("autopilot", simulationService.isAutopilot());
-        m.put("depot", Map.of("lat", config.getDepotLatitude(), "lon", config.getDepotLongitude()));
+        m.put("cityName", district.getCityName());
+        m.put("depot", Map.of("lat", district.getDepotLatitude(), "lon", district.getDepotLongitude()));
         return m;
     }
 }

@@ -1,5 +1,6 @@
 package com.example.smartwaste.algorithm;
 
+import com.example.smartwaste.config.DistrictSettings;
 import com.example.smartwaste.config.SustainabilityConfig;
 import com.example.smartwaste.dto.SustainabilityComparisonResult;
 import com.example.smartwaste.entity.Bin;
@@ -30,7 +31,7 @@ class SustainabilityServiceTest {
         binRepository = mock(BinRepository.class);
         routeRepository = mock(CollectionRouteRepository.class);
         RouteOptimizationService optimizer = new RouteOptimizationService(binRepository, routeRepository, config,
-                mock(VehicleRepository.class), mock(RouteStopRepository.class), Clock.systemDefaultZone());
+                mock(VehicleRepository.class), mock(RouteStopRepository.class), Clock.systemDefaultZone(), new DistrictSettings());
         service = new SustainabilityService(binRepository, routeRepository, optimizer, config, Clock.systemDefaultZone());
     }
 
@@ -46,10 +47,10 @@ class SustainabilityServiceTest {
     @Test
     void optimisedRouteBeatsFixedSchedule() {
         when(binRepository.findAll()).thenReturn(List.of(
-                bin(BinStatus.URGENT, 95, 17.45, 78.36),
-                bin(BinStatus.NORMAL, 20, 17.47, 78.33),
-                bin(BinStatus.NORMAL, 35, 17.42, 78.39),
-                bin(BinStatus.SOON, 70, 17.41, 78.34)));
+                bin(BinStatus.URGENT, 95, 17.75, 83.36),
+                bin(BinStatus.NORMAL, 20, 17.77, 83.33),
+                bin(BinStatus.NORMAL, 35, 17.72, 83.39),
+                bin(BinStatus.SOON, 70, 17.71, 83.34)));
 
         SustainabilityComparisonResult r = service.compareStrategies();
 
@@ -68,7 +69,7 @@ class SustainabilityServiceTest {
 
     @Test
     void nothingToCollectSavesEverything() {
-        when(binRepository.findAll()).thenReturn(List.of(bin(BinStatus.NORMAL, 20, 17.45, 78.36)));
+        when(binRepository.findAll()).thenReturn(List.of(bin(BinStatus.NORMAL, 20, 17.75, 83.36)));
 
         SustainabilityComparisonResult r = service.compareStrategies();
 

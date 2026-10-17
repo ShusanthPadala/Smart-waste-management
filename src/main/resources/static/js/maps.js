@@ -3,6 +3,8 @@ import { esc, fmt, STATUS, cssVar } from './ui.js';
 
 // Standard OSM tiles; dark mode is a CSS filter on the tile pane (see .map-dark in app.css).
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+/** Visakhapatnam; only used until the server tells us where the depot is. */
+const DEFAULT_CENTER = [17.7345, 83.2985];
 const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 export function isDark() {
@@ -12,10 +14,10 @@ export function isDark() {
 }
 
 export class DistrictMap {
-    constructor(el, { onBinClick, zoomControl = true, scrollWheelZoom = true } = {}) {
+    constructor(el, { onBinClick, onMapClick, zoomControl = true, scrollWheelZoom = true } = {}) {
         this.el = el;
         this.onBinClick = onBinClick;
-        this.map = L.map(el, { zoomControl, scrollWheelZoom, attributionControl: true }).setView([17.445, 78.36], 13);
+        this.map = L.map(el, { zoomControl, scrollWheelZoom, attributionControl: true }).setView(DEFAULT_CENTER, 13);
         this.tiles = null;
         this.binMarkers = new Map();
         this.truckMarkers = new Map();
@@ -23,6 +25,7 @@ export class DistrictMap {
         this.depotMarker = null;
         this.fitted = false;
         this.applyTheme();
+        if (onMapClick) this.map.on('click', (e) => onMapClick(e.latlng.lat, e.latlng.lng));
     }
 
     applyTheme() {
@@ -51,12 +54,18 @@ export class DistrictMap {
         this.drawDepot(depot);
         this.drawRoutes(showRoutes ? routes : [], fleet, depot);
         this.drawTrucks(showRoutes ? fleet : [], fleet);
-        if (!this.fitted && bins.length) {
+        if (!this.fitted && (bins.length || depot)) {
             const pts = bins.map((b) => [b.latitude, b.longitude]);
             if (depot) pts.push([depot.lat, depot.lon]);
-            this.map.fitBounds(L.latLngBounds(pts).pad(0.08));
+            if (pts.length > 1) this.map.fitBounds(L.latLngBounds(pts).pad(0.08));
+            else this.map.setView(pts[0], 14);
             this.fitted = true;
         }
+    }
+
+    /** Re-frame the map on the next update, e.g. after switching to another city. */
+    refit() {
+        this.fitted = false;
     }
 
     drawBins(bins, statuses, routes) {
@@ -103,7 +112,9 @@ export class DistrictMap {
 
     drawDepot(depot) {
         if (!depot) return;
-        if (!this.depotMarker) {
+        if (this.depotMarker) {
+            this.depotMarker.setLatLng([depot.lat, depot.lon]);
+        } else {
             this.depotMarker = L.marker([depot.lat, depot.lon], {
                 icon: L.divIcon({ className: 'pin-wrap', html: '<div class="depot"><i class="fa-solid fa-warehouse"></i></div>', iconSize: [30, 30] }),
                 zIndexOffset: 1000,
@@ -169,7 +180,7 @@ export class DistrictMap {
 
     /** Small picker map for the bin form. */
     static picker(el, onPick) {
-        const map = L.map(el, { zoomControl: true, attributionControl: false }).setView([17.445, 78.36], 13);
+        const map = L.map(el, { zoomControl: true, attributionControl: false }).setView(DEFAULT_CENTER, 13);
         L.tileLayer(TILE_URL, { maxZoom: 19 }).addTo(map);
         el.classList.toggle('map-dark', isDark());
         let marker = null;

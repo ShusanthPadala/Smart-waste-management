@@ -1,5 +1,6 @@
 package com.example.smartwaste.dto;
 
+import com.example.smartwaste.entity.SiteProfile;
 import com.example.smartwaste.entity.WasteType;
 import jakarta.validation.constraints.*;
 
@@ -9,6 +10,7 @@ public record BinRequest(
         @NotBlank @Size(max = 120) String locationName,
         @Size(max = 60) String zone,
         WasteType wasteType,
+        SiteProfile siteProfile,
         @NotNull @DecimalMin("-90") @DecimalMax("90") Double latitude,
         @NotNull @DecimalMin("-180") @DecimalMax("180") Double longitude,
         @NotNull @Positive @Max(20000) Double capacity,

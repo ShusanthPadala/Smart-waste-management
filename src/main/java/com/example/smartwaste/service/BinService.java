@@ -7,6 +7,7 @@ import com.example.smartwaste.dto.PredictionResult;
 import com.example.smartwaste.entity.Bin;
 import com.example.smartwaste.entity.RouteStatus;
 import com.example.smartwaste.entity.SensorReading;
+import com.example.smartwaste.entity.SiteProfile;
 import com.example.smartwaste.entity.WasteType;
 import com.example.smartwaste.repository.BinRepository;
 import com.example.smartwaste.repository.RouteStopRepository;
@@ -27,9 +28,6 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class BinService {
-
-    /** Default simulated usage for bins added by hand (% per hour). */
-    private static final double DEFAULT_FILL_RATE = 1.2;
 
     private final BinRepository binRepository;
     private final SensorReadingRepository readingRepository;
@@ -59,7 +57,6 @@ public class BinService {
         ensureCodeFree(req.binCode(), null);
         Bin bin = new Bin();
         apply(bin, req);
-        bin.setBaseFillRatePerHour(DEFAULT_FILL_RATE);
         bin = binRepository.save(bin);
         recordReading(bin);
         return toView(bin, predictionService.predictAndClassifyBin(bin), false);
@@ -98,6 +95,13 @@ public class BinService {
         bin.setLocationName(req.locationName().trim());
         bin.setZone(req.zone() == null || req.zone().isBlank() ? "Unzoned" : req.zone().trim());
         bin.setWasteType(req.wasteType() != null ? req.wasteType() : WasteType.GENERAL);
+        SiteProfile profile = req.siteProfile() != null ? req.siteProfile()
+                : bin.getSiteProfile() != null ? bin.getSiteProfile() : SiteProfile.RESIDENTIAL;
+        // A new or changed usage pattern brings that pattern's typical fill rate with it.
+        if (profile != bin.getSiteProfile() || bin.getBaseFillRatePerHour() <= 0) {
+            bin.setBaseFillRatePerHour(profile.defaultRatePerHour());
+        }
+        bin.setSiteProfile(profile);
         bin.setLatitude(req.latitude());
         bin.setLongitude(req.longitude());
         bin.setCapacity(req.capacity());
@@ -124,7 +128,7 @@ public class BinService {
     }
 
     static BinView toView(Bin b, PredictionResult p, boolean onRoute) {
-        return new BinView(b.getId(), b.getBinCode(), b.getLocationName(), b.getZone(), b.getWasteType(),
+        return new BinView(b.getId(), b.getBinCode(), b.getLocationName(), b.getZone(), b.getWasteType(), b.getSiteProfile(),
                 b.getLatitude(), b.getLongitude(), b.getCapacity(), b.getCurrentFillPercentage(), b.getStatus(),
                 b.getLastUpdated(), b.getLastCollectedAt(),
                 p.getPredictedFillPercentage(), p.getEstimatedHoursToFull(), p.getPredictedOverflowTime(),

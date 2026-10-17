@@ -1,6 +1,7 @@
 package com.example.smartwaste.algorithm;
 
 import com.example.smartwaste.algorithm.RoutingEngine.Point;
+import com.example.smartwaste.config.DistrictSettings;
 import com.example.smartwaste.config.SustainabilityConfig;
 import com.example.smartwaste.entity.*;
 import com.example.smartwaste.repository.BinRepository;
@@ -39,6 +40,7 @@ public class RouteOptimizationService {
     private final VehicleRepository vehicleRepository;
     private final RouteStopRepository routeStopRepository;
     private final Clock clock;
+    private final DistrictSettings district;
 
     public record PlanOutcome(int candidateBins, List<CollectionRoute> routes, List<String> unassignedBinCodes) {}
 
@@ -164,7 +166,7 @@ public class RouteOptimizationService {
     }
 
     public Point depot() {
-        return new Point(config.getDepotLatitude(), config.getDepotLongitude());
+        return new Point(district.getDepotLatitude(), district.getDepotLongitude());
     }
 
     /** Distance between two points in kilometres (Haversine). */

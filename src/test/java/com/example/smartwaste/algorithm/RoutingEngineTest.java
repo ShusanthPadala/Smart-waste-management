@@ -12,14 +12,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class RoutingEngineTest {
 
-    private static final Point DEPOT = new Point(17.44, 78.35);
+    private static final Point DEPOT = new Point(17.74, 83.35);
 
     @Test
     void haversineMatchesKnownDistance() {
         // New York -> Los Angeles is ~3936 km on the great circle.
         double km = RoutingEngine.haversineKm(40.7128, -74.0060, 34.0522, -118.2437);
         assertEquals(3936, km, 10);
-        assertEquals(0, RoutingEngine.haversineKm(17.4, 78.3, 17.4, 78.3), 1e-9);
+        assertEquals(0, RoutingEngine.haversineKm(17.7, 83.3, 17.7, 83.3), 1e-9);
     }
 
     @Test
@@ -70,7 +70,7 @@ class RoutingEngineTest {
 
     @Test
     void oversizeStopIsLeftUnassigned() {
-        List<Point> stops = List.of(new Point(17.45, 78.36), new Point(17.46, 78.37));
+        List<Point> stops = List.of(new Point(17.75, 83.36), new Point(17.76, 83.37));
         List<List<Integer>> clusters = RoutingEngine.sweepClusters(DEPOT, stops, List.of(500.0, 9000.0), List.of(4000.0));
         assertEquals(List.of(0), clusters.get(0));
         assertEquals(List.of(1), clusters.get(1));
@@ -79,7 +79,7 @@ class RoutingEngineTest {
     private static List<Point> randomStops(int n, long seed) {
         Random r = new Random(seed);
         List<Point> out = new ArrayList<>();
-        for (int i = 0; i < n; i++) out.add(new Point(17.40 + r.nextDouble() * 0.08, 78.32 + r.nextDouble() * 0.08));
+        for (int i = 0; i < n; i++) out.add(new Point(17.70 + r.nextDouble() * 0.08, 83.32 + r.nextDouble() * 0.08));
         return out;
     }
 }
