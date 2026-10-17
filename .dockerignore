@@ -1,0 +1,13 @@
+# Keep the build context small: only the sources and build files are needed.
+.git
+.github
+target
+jdk17
+maven
+*.log
+hs_err_pid*.log
+node_modules
+package-lock.json
+.idea
+.vscode
+.claude

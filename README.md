@@ -64,6 +64,19 @@ GitHub Actions runs the same build on every push to `main` and on every pull req
 
 **Try this:** click **Plan routes**, then **Dispatch all**, open **Live map**, and set the clock to **360×**. Or switch on **Autopilot** and watch the Sustainability page fill up.
 
+## Deploy
+
+The repo includes a `Dockerfile`, so any Docker host works. It's sized for a 512 MB instance, and the app listens on `$PORT` when that variable is set.
+
+**Render (free tier):**
+1. Go to New → Web Service, then pick this repo.
+2. Set **Language: Docker** and leave Root Directory empty.
+3. Choose the **Free** instance type.
+4. Set the health check path to `/actuator/health`.
+5. Deploy. Pushes to `main` redeploy automatically.
+
+The free instance sleeps after a period without visitors. The next visit wakes it in about a minute, starting from fresh demo data because the database is in memory.
+
 ## API
 
 All JSON. Errors come back as `{status, error, message, fieldErrors?}`.
